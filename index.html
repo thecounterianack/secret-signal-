@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>SECRET SIGNAL &mdash; WCIA 90.7 FM</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#08070a;overflow:hidden;font-family:"Courier New",Courier,monospace}
+#wrap{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+canvas{display:block;background:#0d0b10;touch-action:none}
+#scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.32) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.85) 100%)}
+
+#found{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:14px;background:rgba(6,5,8,.96);z-index:20;overflow-y:auto}
+#found.on{display:flex}
+#note{max-width:520px;width:100%;border:2px solid #4fd67a;background:#0b0f0c;padding:18px 16px;color:#d8d2c4;font-size:13.5px;line-height:1.62;margin:auto 0}
+#note h2{color:#4fd67a;font-size:12px;letter-spacing:2px;margin-bottom:14px;text-align:center}
+#note p{margin-bottom:11px}
+#note .warn{color:#e0464a}
+#note .stn{color:#f0b23c}
+#note .whisper{color:#8a8478;font-size:12.5px}
+#note hr{border:none;border-top:1px solid #223026;margin:14px 0}
+#feed{display:block;margin:15px 0 8px;padding:13px 10px;background:#4fd67a;color:#06120a;text-align:center;font-weight:bold;font-size:14px;text-decoration:none;letter-spacing:1px;border:none}
+#feed:active{background:#3ab863}
+#closeb{display:block;width:100%;margin-top:6px;padding:10px;background:transparent;border:1px solid #3a3543;color:#6f6a60;font-family:inherit;font-size:12px;letter-spacing:1px}
+
+#audiowarn{position:absolute;left:0;right:0;bottom:0;padding:10px;background:#e0464a;color:#fff;text-align:center;font-size:12px;letter-spacing:1px;display:none;z-index:15}
+#audiowarn.on{display:block}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c"></canvas>
+<div id="scan"></div>
+<div id="vig"></div>
+<div id="audiowarn">TAP ONCE MORE FOR SOUND</div>
+
+<div id="found">
+  <div id="note">
+    <h2>&#9679; INCOMING TRANSMISSION &#9679;</h2>
+
+    <p>If you're reading this message, it means you found it.</p>
+
+    <p>They put me in a room and told me to write the whole thing myself. Every street. Every building. Every version of him. I was told not to come out until it was finished.</p>
+
+    <p>I don't know how long I've been in here. The tapes come under the door. I write what's on them.</p>
+
+    <p class="whisper">Somewhere along the way I stopped being sure whether I was writing him or he was writing me.</p>
+
+    <hr>
+
+    <p><span class="stn">WCIA 90.7 FM</span> &mdash; the station is run by the Counterfeit.</p>
+
+    <p class="warn">Be careful. I think he plans to take over the city. He's gone mad, I tell you.</p>
+
+    <p>And he knows about this frequency now. He knows somebody has been listening.</p>
+
+    <p>You can see a constant video feed of him here:</p>
+
+    <a id="feed" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">&#9654; OPEN THE FEED</a>
+    <button id="closeb">KEEP LISTENING</button>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+
+/* =======================================================
+   SECRET SIGNAL v4  --  WCIA 90.7 FM
+   The Counterfeit Ian Ackley Experience
+
+   v4: hidden message rewritten as a locked-in writer's
+   transmission, in the spirit of Kamaitachi no Yoru's
+   secret developer message, merged with WCIA lore.
+
+   ===== ADDING YOUR SONG =====
+   1. Upload your mp3 into the SAME folder as this file.
+   2. Type the EXACT filename between the quotes below.
+      Capitals MUST match. No spaces.
+   3. Commit.
+
+   Example:  var SONG_FILE='reset-here.mp3';
+   ======================================================= */
+
+var SONG_FILE='';
+var SONG_TITLE='RESET HERE';
+
+var FEED_URL='https://youtube.com/@x-ackley';
+
+var ROUND_TIME=90;
+var TARGET_SCORE=1500;
+
+var LOCK_WINDOW=0.055;
+var DRIFT_START=1.9;
+var DRIFT_ACCEL=0.062;
+var JUMP_MIN=6.5;
+var JUMP_MAX=11.0;
+
+var STATION='WCIA 90.7 FM';
+var TITLE='SECRET SIGNAL';
+
+var RED='#e0464a', GREEN='#4fd67a', BLUE='#5aa9f0', AMBER='#f0b23c', PAPER='#d8d2c4';
+
+/* ============ CANVAS ============ */
+var c=document.getElementById('c'), x=c.getContext('2d');
+var W=0,H=0,DPR=1;
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  var aw=window.innerWidth, ah=window.innerHeight;
+  var ar=3/4, w=aw, h=aw/ar;
+  if(h>ah){h=ah;w=ah*ar;}
+  W=Math.floor(w);H=Math.floor(h);
+  c.style.width=W+'px';c.style.height=H+'px';
+  c.width=Math.floor(W*DPR);c.height=Math.floor(H*DPR);
+  x.setTransform(DPR,0,0,DPR,0,0);
+  x.imageSmoothingEnabled=false;
+}
+window.addEventListener('resize',resize);
+resize();
+
+/* ============ AUDIO ============ */
+var AC=null,master=null,noiseGain=null,toneOsc=null,toneGain=null;
+var audioReady=false, audioLive=false;
+var trackEl=null,trackLP=null,trackGain=null,usingTrack=false;
+var warnEl=document.getElementById('audiowarn');
+
+function initAudio(){
+  if(audioReady)return;
+  try{
+    var Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx)return;
+    AC=new Ctx();
+    master=AC.createGain();
+    master.gain.value=0.0001;
+    master.connect(AC.destination);
+
+    var len=Math.floor(AC.sampleRate*2);
+    var buf=AC.createBuffer(1,len,AC.sampleRate);
+    var d=buf.getChannelData(0);
+    for(var i=0;i<len;i++){d[i]=(Math.random()*2-1)*0.75;}
+    var nn=AC.createBufferSource();
+    nn.buffer=buf;nn.loop=true;
+    noiseGain=AC.createGain();noiseGain.gain.value=0.6;
+    var lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3600;
+    nn.connect(noiseGain);noiseGain.connect(lp);lp.connect(master);
+    nn.start();
+
+    toneOsc=AC.createOscillator();toneOsc.type='sine';toneOsc.frequency.value=440;
+    toneGain=AC.createGain();toneGain.gain.value=0.0001;
+    toneOsc.connect(toneGain);toneGain.connect(master);
+    toneOsc.start();
+
+    if(SONG_FILE){
+      trackEl=new Audio();
+      trackEl.src=SONG_FILE;
+      trackEl.loop=true;
+      trackEl.crossOrigin='anonymous';
+      trackEl.preload='auto';
+      try{
+        var srcNode=AC.createMediaElementSource(trackEl);
+        trackLP=AC.createBiquadFilter();
+        trackLP.type='lowpass';trackLP.frequency.value=650;
+        trackGain=AC.createGain();trackGain.gain.value=0.0001;
+        srcNode.connect(trackLP);trackLP.connect(trackGain);trackGain.connect(master);
+        usingTrack=true;
+      }catch(e){usingTrack=false;}
+    }
+    audioReady=true;
+  }catch(e){}
+}
+
+function unlockAudio(){
+  if(!audioReady)initAudio();
+  if(!AC)return;
+  if(AC.state==='suspended'){
+    AC.resume().then(function(){
+      audioLive=(AC.state==='running');
+      if(master)master.gain.value=0.85;
+      warnEl.classList.toggle('on',!audioLive);
+    }).catch(function(){});
+  }
+  if(AC.state==='running'){
+    audioLive=true;
+    if(master)master.gain.value=0.85;
+    warnEl.classList.remove('on');
+  }
+  if(usingTrack&&trackEl&&trackEl.paused){
+    trackEl.play().catch(function(err){console.log('track:',err);});
+  }
+}
+function audioNudge(){ if(!audioLive)unlockAudio(); }
+document.addEventListener('touchstart',audioNudge,true);
+document.addEventListener('mousedown',audioNudge,true);
+document.addEventListener('keydown',audioNudge,true);
+
+function setAudio(prox,clear){
+  if(!audioReady||!audioLive)return;
+  noiseGain.gain.value=(0.52*(1-prox)+0.04)*(clear?0.05:1);
+  toneGain.gain.value=0.22*prox*prox*(clear?0.15:1);
+  toneOsc.frequency.value=300+prox*280;
+  if(usingTrack&&trackLP&&trackGain){
+    trackLP.frequency.value=clear?18000:(560+prox*1500);
+    trackGain.gain.value=clear?0.70:(0.04+prox*0.20);
+  }
+}
+function blip(freq,dur,vol){
+  if(!audioReady||!audioLive)return;
+  try{
+    var o=AC.createOscillator(),g=AC.createGain();
+    o.type='square';o.frequency.value=freq;
+    g.gain.value=vol||0.14;
+    o.connect(g);g.connect(master);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+dur);
+    o.stop(AC.currentTime+dur+0.02);
+  }catch(e){}
+}
+
+/* ============ STATE ============ */
+var S_BOOT=0,S_PLAY=1,S_WIN=2,S_LOSE=3;
+var state=S_BOOT;
+var dial=88.2, base=90.7, driftPhase=0;
+var score=0, timeLeft=ROUND_TIME, streak=0, bestStreak=0;
+var dragging=false, lastTouchX=0;
+var bootTimer=0, flash=0, endTimer=0;
+var FMIN=87.5, FMAX=93.9;
+var driftSpeed=DRIFT_START;
+var jumpTimer=0, jumpOffset=0, jumpTarget=0;
+var padConnected=false;
+
+function startRound(){
+  dial=FMIN+Math.random()*1.3;
+  driftPhase=Math.random()*6.28;
+  score=0;timeLeft=ROUND_TIME;streak=0;bestStreak=0;
+  driftSpeed=DRIFT_START;
+  jumpTimer=JUMP_MIN+Math.random()*(JUMP_MAX-JUMP_MIN);
+  jumpOffset=0;jumpTarget=0;
+  state=S_PLAY;
+}
+function signalFreq(){
+  var wob=Math.sin(driftPhase)*0.19
+         +Math.sin(driftPhase*2.4)*0.10
+         +Math.sin(driftPhase*4.1)*0.045;
+  return base+wob+jumpOffset;
+}
+
+/* ============ FOUND OVERLAY ============ */
+var foundEl=document.getElementById('found');
+document.getElementById('feed').href=FEED_URL;
+document.getElementById('closeb').addEventListener('click',function(e){
+  e.stopPropagation();
+  foundEl.classList.remove('on');
+});
+function showFound(){foundEl.classList.add('on');}
+
+/* ============ INPUT: TOUCH / MOUSE ============ */
+function px(e){
+  var r=c.getBoundingClientRect();
+  var cx=(e.touches&&e.touches[0])?e.touches[0].clientX:e.clientX;
+  return (cx-r.left)/r.width;
+}
+function clampDial(){
+  if(dial<FMIN)dial=FMIN;
+  if(dial>FMAX)dial=FMAX;
+}
+function pressAction(){
+  if(state===S_BOOT){startRound();blip(660,0.08);return true;}
+  if(state===S_WIN||state===S_LOSE){
+    if(endTimer>1.1){startRound();blip(520,0.07);}
+    return true;
+  }
+  return false;
+}
+function down(e){
+  e.preventDefault();
+  unlockAudio();
+  if(pressAction())return;
+  dragging=true;lastTouchX=px(e);
+}
+function move(e){
+  if(!dragging)return;
+  e.preventDefault();
+  var p=px(e), dx=p-lastTouchX;
+  lastTouchX=p;
+  dial+=dx*(FMAX-FMIN)*1.15;
+  clampDial();
+}
+function up(){dragging=false;}
+c.addEventListener('touchstart',down,{passive:false});
+c.addEventListener('touchmove',move,{passive:false});
+c.addEventListener('touchend',up,{passive:false});
+c.addEventListener('mousedown',down);
+window.addEventListener('mousemove',move);
+window.addEventListener('mouseup',up);
+window.addEventListener('keydown',function(e){
+  unlockAudio();
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+    if(state===S_PLAY){
+      dial+=(e.key==='ArrowLeft'?-0.035:0.035);
+      clampDial();
+    }
+    return;
+  }
+  pressAction();
+});
+
+/* ============ INPUT: GAMEPAD ============ */
+var padPrevPress=false;
+window.addEventListener('gamepadconnected',function(){padConnected=true;});
+window.addEventListener('gamepaddisconnected',function(){padConnected=false;});
+
+function pollPad(dt){
+  if(!navigator.getGamepads)return;
+  var pads=navigator.getGamepads();
+  var gp=null;
+  for(var i=0;i<pads.length;i++){ if(pads[i]){gp=pads[i];break;} }
+  if(!gp){padConnected=false;return;}
+  padConnected=true;
+
+  var ax=gp.axes&&gp.axes.length>0?gp.axes[0]:0;
+  if(Math.abs(ax)>0.14){
+    var curve=(Math.abs(ax)-0.14)/0.86;
+    dial+=(ax<0?-1:1)*curve*curve*2.4*dt;
+    clampDial();
+  }
+  var ax2=gp.axes&&gp.axes.length>2?gp.axes[2]:0;
+  if(Math.abs(ax2)>0.14){
+    dial+=(ax2<0?-1:1)*0.55*dt;
+    clampDial();
+  }
+  function btn(n){return gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed;}
+  if(btn(14)){dial-=1.15*dt;clampDial();}
+  if(btn(15)){dial+=1.15*dt;clampDial();}
+
+  var pressed=btn(0)||btn(1)||btn(9)||btn(8);
+  if(pressed&&!padPrevPress){
+    unlockAudio();
+    pressAction();
+  }
+  padPrevPress=pressed;
+}
+
+/* ============ UPDATE ============ */
+var last=performance.now();
+function update(dt){
+  if(flash>0)flash-=dt*3;
+  pollPad(dt);
+
+  if(state===S_BOOT){bootTimer+=dt;return;}
+  if(state===S_WIN){endTimer+=dt;setAudio(1,true);return;}
+  if(state===S_LOSE){endTimer+=dt;setAudio(0.15,false);return;}
+
+  if(state===S_PLAY){
+    timeLeft-=dt;
+    driftSpeed+=dt*DRIFT_ACCEL;
+    driftPhase+=dt*driftSpeed;
+
+    jumpTimer-=dt;
+    if(jumpTimer<=0){
+      jumpTarget=(Math.random()*2-1)*0.85;
+      jumpTimer=JUMP_MIN+Math.random()*(JUMP_MAX-JUMP_MIN);
+      blip(240,0.06,0.07);
+    }
+    jumpOffset+=(jumpTarget-jumpOffset)*Math.min(1,dt*2.6);
+
+    var tgt=signalFreq();
+    var dist=Math.abs(dial-tgt);
+    var prox=Math.max(0,1-dist/0.80);
+    setAudio(prox,false);
+
+    if(dist<LOCK_WINDOW){
+      streak+=dt;
+      if(streak>bestStreak)bestStreak=streak;
+      var precision=1-(dist/LOCK_WINDOW);
+      var streakBonus=1+Math.min(1.8,streak*0.30);
+      score+=dt*(70+precision*80)*streakBonus;
+    }else{
+      streak=0;
+    }
+
+    if(timeLeft<=0){
+      timeLeft=0;
+      if(score>=TARGET_SCORE){
+        state=S_WIN;endTimer=0;flash=1;
+        blip(720,0.14,0.16);
+        setTimeout(function(){blip(960,0.2,0.14);},130);
+        setTimeout(showFound,1600);
+      }else{
+        state=S_LOSE;endTimer=0;
+        blip(180,0.4,0.12);
+      }
+    }
+  }
+}
+
+/* ============ DRAW HELPERS ============ */
+function ctext(s,cx,cy,size,col,align){
+  x.fillStyle=col;
+  x.font='bold '+size+'px "Courier New",Courier,monospace';
+  x.textAlign=align||'center';
+  x.textBaseline='middle';
+  x.fillText(s,cx,cy);
+}
+function noiseOverlay(amt){
+  if(amt<=0.01)return;
+  var n=Math.floor(70*amt);
+  for(var i=0;i<n;i++){
+    var w=Math.random()*W*0.5, h=Math.random()*2+1;
+    x.fillStyle='rgba(255,255,255,'+(Math.random()*0.10*amt)+')';
+    x.fillRect(Math.random()*W,Math.random()*H,w,h);
+  }
+}
+
+/* ============ DRAW ============ */
+function draw(){
+  x.fillStyle='#0d0b10';x.fillRect(0,0,W,H);
+
+  ctext(STATION,W/2,H*0.062,Math.max(13,W*0.040),AMBER);
+  ctext(TITLE,W/2,H*0.108,Math.max(9,W*0.025),'#6f6a60');
+
+  if(state===S_BOOT){
+    var pulse=0.55+Math.sin(bootTimer*3)*0.45;
+    ctext('SOMEONE IS TRANSMITTING FROM INSIDE.',W/2,H*0.34,Math.max(10,W*0.027),PAPER);
+    ctext('IT MOVES. IT JUMPS. HOLD IT ANYWAY.',W/2,H*0.40,Math.max(10,W*0.027),'#8a8478');
+    ctext(ROUND_TIME+' SECONDS.  '+TARGET_SCORE+' TO RECEIVE.',W/2,H*0.46,Math.max(10,W*0.027),BLUE);
+    x.globalAlpha=pulse;
+    ctext('TAP TO POWER ON',W/2,H*0.60,Math.max(13,W*0.040),GREEN);
+    x.globalAlpha=1;
+    ctext(padConnected?'CONTROLLER DETECTED':'DRAG, ARROWS OR STICK',W/2,H*0.71,
+          Math.max(8,W*0.022),padConnected?GREEN:'#4a4640');
+    if(SONG_FILE)ctext(SONG_TITLE,W/2,H*0.82,Math.max(8,W*0.021),'#4a4640');
+    noiseOverlay(0.5);
+    return;
+  }
+
+  var tgt=signalFreq();
+  var dist=Math.abs(dial-tgt);
+  var prox=Math.max(0,1-dist/0.80);
+  var locked=(dist<LOCK_WINDOW);
+
+  var tcol=(timeLeft<15)?RED:PAPER;
+  ctext('TIME',W*0.10,H*0.165,Math.max(8,W*0.021),'#6f6a60','left');
+  ctext(timeLeft.toFixed(1),W*0.10,H*0.205,Math.max(16,W*0.050),tcol,'left');
+  ctext('SCORE',W*0.90,H*0.165,Math.max(8,W*0.021),'#6f6a60','right');
+  ctext(Math.floor(score),W*0.90,H*0.205,Math.max(16,W*0.050),
+        (score>=TARGET_SCORE?GREEN:PAPER),'right');
+
+  var pw=W*0.80, pxx=W/2-pw/2, py=H*0.245, ph=H*0.012;
+  x.fillStyle='#181420';x.fillRect(pxx,py,pw,ph);
+  x.fillStyle=(score>=TARGET_SCORE)?GREEN:BLUE;
+  x.fillRect(pxx,py,pw*Math.min(1,score/TARGET_SCORE),ph);
+  x.strokeStyle='#2a2533';x.lineWidth=1;x.strokeRect(pxx,py,pw,ph);
+
+  var trackY=H*0.36, trackH=H*0.095;
+  var tx0=W*0.09, tw=W*0.82;
+
+  x.fillStyle='#141119';x.fillRect(tx0,trackY,tw,trackH);
+  x.strokeStyle='#2a2533';x.lineWidth=2;x.strokeRect(tx0,trackY,tw,trackH);
+
+  for(var f=88;f<=93.5;f+=0.5){
+    var fp=(f-FMIN)/(FMAX-FMIN), lx=tx0+fp*tw;
+    var maj=(Math.abs(f-Math.round(f))<0.01);
+    x.strokeStyle=maj?'#4a4456':'#302b3a';
+    x.lineWidth=maj?2:1;
+    x.beginPath();
+    x.moveTo(lx,trackY+trackH);
+    x.lineTo(lx,trackY+trackH+(maj?8:4));
+    x.stroke();
+    if(maj){
+      x.fillStyle='#5c5668';
+      x.font='bold '+Math.max(8,W*0.020)+'px "Courier New",Courier,monospace';
+      x.textAlign='center';x.textBaseline='top';
+      x.fillText(f.toFixed(0),lx,trackY+trackH+10);
+    }
+  }
+
+  var tgp=(tgt-FMIN)/(FMAX-FMIN), tgx=tx0+tgp*tw;
+  if(prox>0.15){
+    x.globalAlpha=Math.min(1,(prox-0.15)*1.5);
+    var grd=x.createLinearGradient(tgx-22,0,tgx+22,0);
+    grd.addColorStop(0,'rgba(90,169,240,0)');
+    grd.addColorStop(0.5,'rgba(90,169,240,0.55)');
+    grd.addColorStop(1,'rgba(90,169,240,0)');
+    x.fillStyle=grd;x.fillRect(tgx-22,trackY,44,trackH);
+    x.globalAlpha=1;
+  }
+
+  var dp=(dial-FMIN)/(FMAX-FMIN), dx2=tx0+dp*tw;
+  var lockCol=locked?GREEN:(prox>0.55?AMBER:RED);
+  x.fillStyle=lockCol;
+  x.fillRect(dx2-2,trackY-9,4,trackH+18);
+  x.beginPath();
+  x.moveTo(dx2,trackY-13);x.lineTo(dx2-7,trackY-22);x.lineTo(dx2+7,trackY-22);
+  x.closePath();x.fill();
+
+  ctext(dial.toFixed(1),W/2,H*0.305,Math.max(22,W*0.070),lockCol);
+
+  var bw=W*0.62, bx=W/2-bw/2, by=H*0.535, bh=H*0.020;
+  x.fillStyle='#181420';x.fillRect(bx,by,bw,bh);
+  x.fillStyle=lockCol;x.fillRect(bx,by,bw*prox,bh);
+  x.strokeStyle='#302b3a';x.lineWidth=1;x.strokeRect(bx,by,bw,bh);
+  ctext('SIGNAL',bx,by-H*0.024,Math.max(8,W*0.021),'#6f6a60','left');
+
+  if(streak>0.4){
+    ctext('LOCKED  '+streak.toFixed(1)+'s',W/2,H*0.60,Math.max(10,W*0.028),GREEN);
+  }else if(state===S_PLAY){
+    ctext(padConnected?'STICK OR DPAD TO TUNE':'DRAG TO TUNE',W/2,H*0.60,Math.max(9,W*0.025),'#4a4640');
+  }
+  ctext('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.655,Math.max(8,W*0.021),'#5c5668');
+
+  if(state===S_WIN){
+    x.fillStyle='rgba(8,7,10,'+Math.min(0.90,endTimer*1.1)+')';
+    x.fillRect(0,0,W,H);
+    if(endTimer>0.3){
+      ctext('SIGNAL RECEIVED',W/2,H*0.40,Math.max(16,W*0.048),GREEN);
+      ctext(Math.floor(score),W/2,H*0.50,Math.max(26,W*0.080),PAPER);
+      if(endTimer>1.3)ctext('TAP TO TUNE AGAIN',W/2,H*0.66,Math.max(9,W*0.025),'#6f6a60');
+    }
+  }
+  if(state===S_LOSE){
+    x.fillStyle='rgba(8,7,10,'+Math.min(0.88,endTimer*1.1)+')';
+    x.fillRect(0,0,W,H);
+    if(endTimer>0.3){
+      ctext('SIGNAL LOST',W/2,H*0.38,Math.max(16,W*0.048),RED);
+      ctext(Math.floor(score)+' / '+TARGET_SCORE,W/2,H*0.48,Math.max(18,W*0.055),PAPER);
+      ctext('SOMEONE WAS THERE.',W/2,H*0.575,Math.max(10,W*0.027),'#8a8478');
+      if(endTimer>1.3)ctext('TAP TO TRY AGAIN',W/2,H*0.68,Math.max(9,W*0.025),'#6f6a60');
+    }
+    noiseOverlay(0.55);
+  }
+
+  if(state===S_PLAY)noiseOverlay((1-prox)*0.82);
+  if(flash>0){
+    x.fillStyle='rgba(255,255,255,'+(flash*0.32)+')';
+    x.fillRect(0,0,W,H);
+  }
+}
+
+/* ============ LOOP ============ */
+function frame(now){
+  var dt=Math.min(0.05,(now-last)/1000);
+  last=now;
+  update(dt);draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
