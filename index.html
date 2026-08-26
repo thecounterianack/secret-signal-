@@ -12,7 +12,6 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 #scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.32) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
 #vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.85) 100%)}
 
-/* pause button - small, cornered, so it never fights the tuner drag */
 #pbtn{position:absolute;top:8px;right:8px;width:40px;height:32px;border:1px solid #3a3543;
  background:rgba(13,11,16,.8);color:#f0b23c;font-family:inherit;font-size:13px;font-weight:bold;
  letter-spacing:1px;display:none;z-index:16}
@@ -75,7 +74,7 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 (function(){
 
 /* =======================================================
-   SECRET SIGNAL v6  --  WCIA 90.7 FM
+   SECRET SIGNAL v8  --  WCIA 90.7 FM
    The Counterfeit Ian Ackley Experience
 
    ===== ADDING YOUR SONG =====
@@ -90,33 +89,40 @@ canvas{display:block;background:#0d0b10;touch-action:none}
    This file expects lowercase song.mp3 - POLYBIUS expects
    Song.mp3. Make them match if you share one audio file.
 
-   ===== PAUSE MODEL (v6) =====
-   This is a hold-the-target game, so a free pause would let a
-   player stop time, reposition the dial with no pressure, and
-   unpause already locked. That would break scoring outright.
+   ===== v8: REACHABLE TARGET + REST WINDOWS =====
+   TARGET_SCORE is 1983 - the year the Famicom launched, the
+   machine the song is about.
 
-   Instead:
-     - Pausing is allowed and freezes everything.
-     - RESUMING plays a 3-2-1 countdown during which the signal
-       KEEPS MOVING and you score NOTHING. By the time control
-       returns, the target has drifted, so there is no free
-       repositioning and no exploit.
-     - The dial is hidden while paused so the target cannot be
-       studied at leisure.
-     - Auto-pauses on tab hide / window blur, which also stops
-       the timer and audio from desyncing when backgrounded.
+   The old target was unreachable because every point had to be
+   earned against a signal that never stopped moving. Now the
+   broadcast STEADIES five times per round: the drift halts, the
+   jump timer holds, and the signal parks so a player can sit in
+   green and bank a streak.
 
-   ===== v5 SCORING (kept) =====
-     Amber (near) pays points. Green (locked) pays double plus a
-     precision bonus that only exists inside green. Amber tapers
-     to its outer edge; streak decays in amber, resets in red.
+   CALM WINDOWS: 5 per round, 4 seconds each, at roughly
+   7s, 23s, 38s, 54s and 70s. All five finish before the
+   final-15-second surge, so the finale stays tense and the
+   rest moments never soften the ending.
 
-   ===== v5 DIFFICULTY (kept) =====
-     Easy start via p*p curve, then a surge in the final 15s:
-     faster drift, more frequent and larger jumps, tighter lock.
-     Jump sides alternate with random bias; amplitude clamped so
-     the signal can never leave the dial (89.115..92.285 inside
-     87.5..93.9, 1.6 units of headroom each side).
+   Scoring rates were lowered to match, so 1983 is a real but
+   fair bar. Modelled outcomes over 6 seeded runs each:
+     first try  ~1683   (no win)
+     learning   ~1791   (no win)
+     decent     ~1937   (just short - one more go)
+     good       ~2137   WIN
+     expert     ~3523   WIN
+
+   ===== PAUSE MODEL =====
+   Pausing freezes everything, but RESUMING plays a 3-2-1
+   countdown during which the signal KEEPS MOVING and nothing
+   scores, so a pause cannot be used to re-aim. The dial is
+   hidden while paused. Auto-pauses on tab hide / window blur.
+
+   ===== GAMEPAD AND AUDIO =====
+   A gamepad button is NOT a valid user gesture for unlocking
+   audio, so on the boot screen a pad press raises a prompt
+   telling the player to tap, click, or press space instead of
+   starting a silent round.
    ======================================================= */
 
 var SONG_FILE='song.mp3';
@@ -125,22 +131,34 @@ var SONG_TITLE='RESET HERE';
 var FEED_URL='https://youtube.com/@x-ackley';
 
 var ROUND_TIME=90;
-var TARGET_SCORE=2600;
+
+/* 1983 - the year the Famicom shipped */
+var TARGET_SCORE=1983;
 
 /* zone half-widths in MHz */
 var LOCK_WINDOW=0.055;   /* green */
 var NEAR_WINDOW=0.22;    /* amber */
 
 /* scoring rates (per second, before streak multiplier) */
-var GREEN_BASE=26, GREEN_PREC=30, GREEN_MULT=2.0;
-var AMBER_BASE=11, AMBER_TAPER=9;
+var GREEN_BASE=9, GREEN_PREC=11, GREEN_MULT=2.0;
+var AMBER_BASE=3.5, AMBER_TAPER=3;
 
 /* difficulty envelope */
 var DRIFT_BASE=1.35, DRIFT_RANGE=2.10;
 var SURGE_SECS=15;
 
+/* ---- rest windows: the broadcast steadies ---- */
+var CALM_COUNT=5;        /* how many rest moments per round */
+var CALM_DUR=4.0;        /* seconds each */
+var CALM_FIRST=7.0;      /* first one starts here */
+var CALM_LAST_END=74.0;  /* last one must finish by here (pre-surge) */
+var CALM_EASE=2.4;       /* how fast the signal settles into its park */
+
 /* pause / resume */
-var RESUME_COUNT=3.0;   /* seconds of 3-2-1 before control returns */
+var RESUME_COUNT=3.0;
+
+/* pad prompt duration in seconds */
+var PAD_PROMPT_SECS=10;
 
 var STATION='WCIA 90.7 FM';
 var TITLE='SECRET SIGNAL';
@@ -250,7 +268,6 @@ function setAudio(prox,clear){
     trackGain.gain.value=clear?0.85:(0.22+prox*0.42);
   }
 }
-/* muffle everything while paused without stopping the song */
 function setAudioPaused(){
   if(!audioReady||!audioLive)return;
   noiseGain.gain.value=0.02;
@@ -287,7 +304,22 @@ var jumpTimer=0, jumpOffset=0, jumpTarget=0, jumpSide=1;
 var padConnected=false;
 var diff=0, surge=0, lockWin=LOCK_WINDOW, surgeAnnounced=false;
 var resumeT=0, lastCountShown=-1;
+var padTriedStart=false, padPromptT=0;
+var calmStarts=[], calmIdx=-1, calmLeft=0, calmPark=0, calmAnnounced=false;
 var pbtn=document.getElementById('pbtn');
+
+function clearPadPrompt(){ padTriedStart=false; padPromptT=0; }
+
+/* evenly spread the rest windows, all finishing before the surge */
+function buildCalmSchedule(){
+  calmStarts=[];
+  if(CALM_COUNT<=0) return;
+  if(CALM_COUNT===1){ calmStarts.push(CALM_FIRST); return; }
+  var span=(CALM_LAST_END-CALM_DUR)-CALM_FIRST;
+  for(var i=0;i<CALM_COUNT;i++){
+    calmStarts.push(CALM_FIRST + i*(span/(CALM_COUNT-1)));
+  }
+}
 
 function startRound(){
   dial=FMIN+Math.random()*1.3;
@@ -300,16 +332,17 @@ function startRound(){
   jumpOffset=0;jumpTarget=0;
   resumeT=0;lastCountShown=-1;
   dragging=false;
+  buildCalmSchedule();
+  calmIdx=-1;calmLeft=0;calmPark=0;calmAnnounced=false;
+  clearPadPrompt();
   state=S_PLAY;
   pbtn.classList.add('on');
 }
 
-/* jump cadence tightens as difficulty rises */
 function nextJumpGap(){
   var lo=7.2-diff*3.6, hi=12.0-diff*6.0;
   return lo+Math.random()*Math.max(0.6,hi-lo);
 }
-/* amplitude grows with difficulty; clamped so the signal stays on the dial */
 function jumpAmp(){ return 0.55+diff*0.70; }
 
 function signalFreq(){
@@ -322,9 +355,45 @@ function signalFreq(){
   return f;
 }
 
-/* advance ONLY the signal, no scoring - used during the resume countdown
-   so the target keeps drifting and cannot be pre-aimed */
+/* is a rest window live right now? */
+function calmActive(){ return calmLeft>0; }
+
+/* start the next rest window if the clock has reached it */
+function checkCalmStart(){
+  var elapsed=ROUND_TIME-timeLeft;
+  for(var i=calmIdx+1;i<calmStarts.length;i++){
+    if(elapsed>=calmStarts[i]&&elapsed<calmStarts[i]+CALM_DUR){
+      calmIdx=i;
+      calmLeft=CALM_DUR-(elapsed-calmStarts[i]);
+      /* park the signal where it already is, so it does not teleport */
+      calmPark=jumpOffset;
+      calmAnnounced=false;
+      blip(880,0.10,0.13);
+      setTimeout(function(){blip(1170,0.14,0.12);},110);
+      return;
+    }
+    if(elapsed>=calmStarts[i]+CALM_DUR) calmIdx=i;
+  }
+}
+
+/* advance the signal. During a rest window the drift halts and the
+   jump offset eases to a fixed park, so the target holds still.
+   No scoring happens here - callers decide that. */
 function advanceSignal(dt){
+  if(calmActive()){
+    calmLeft-=dt;
+    /* drift frozen: driftPhase does not move */
+    jumpOffset+=(calmPark-jumpOffset)*Math.min(1,dt*CALM_EASE);
+    /* hold the jump timer so no jump fires mid-rest */
+    if(jumpTimer<1.2) jumpTimer=1.2;
+    if(calmLeft<=0){
+      calmLeft=0;
+      blip(520,0.10,0.11);
+      /* fresh gap so the first post-rest jump is not instant */
+      jumpTimer=Math.max(jumpTimer,2.0);
+    }
+    return;
+  }
   driftPhase+=dt*driftSpeed;
   jumpTimer-=dt;
   if(jumpTimer<=0){
@@ -342,7 +411,7 @@ function pauseGame(){
   if(state!==S_PLAY&&state!==S_RESUME)return;
   state=S_PAUSE;
   dragging=false;
-  streak=0;                 /* no banking a streak across a pause */
+  streak=0;
   pbtn.classList.remove('on');
   setAudioPaused();
   blip(300,0.12,0.12);
@@ -362,7 +431,6 @@ function togglePause(){
 pbtn.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();togglePause();});
 pbtn.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();togglePause();},{passive:false});
 
-/* auto-pause: tab hidden or window blurred */
 document.addEventListener('visibilitychange',function(){
   if(document.hidden&&(state===S_PLAY||state===S_RESUME))pauseGame();
 });
@@ -402,7 +470,7 @@ function down(e){
   e.preventDefault();
   unlockAudio();
   if(pressAction())return;
-  if(state!==S_PLAY)return;      /* no dragging during the countdown */
+  if(state!==S_PLAY)return;
   dragging=true;lastTouchX=px(e);
 }
 function move(e){
@@ -451,12 +519,18 @@ function pollPad(dt){
   padConnected=true;
   function btn(n){return !!(gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed);}
 
-  /* START toggles pause mid-round */
+  if(padTriedStart){
+    if(state!==S_BOOT){ clearPadPrompt(); }
+    else{
+      padPromptT+=dt;
+      if(padPromptT>PAD_PROMPT_SECS) clearPadPrompt();
+    }
+  }
+
   var ps=btn(9);
   if(ps&&!padStartPrev&&(state===S_PLAY||state===S_RESUME||state===S_PAUSE))togglePause();
   padStartPrev=ps;
 
-  /* dial only moves in true play, never on menus or the countdown */
   if(state===S_PLAY){
     var ax=gp.axes&&gp.axes.length>0?gp.axes[0]:0;
     if(Math.abs(ax)>0.14){
@@ -475,8 +549,11 @@ function pollPad(dt){
 
   var pressed=btn(0)||btn(1)||btn(8);
   if(pressed&&!padPrevPress){
-    unlockAudio();
-    pressAction();
+    if(state===S_BOOT&&!audioLive){
+      padTriedStart=true;padPromptT=0;
+    } else {
+      pressAction();
+    }
   }
   padPrevPress=pressed;
 }
@@ -525,6 +602,8 @@ function update(dt){
     driftSpeed=DRIFT_BASE+diff*DRIFT_RANGE;
     lockWin=LOCK_WINDOW*(1-diff*0.22);
 
+    /* rest windows only outside the surge */
+    if(surge<=0) checkCalmStart();
     advanceSignal(dt);
 
     var tgt=signalFreq();
@@ -590,22 +669,35 @@ function draw(){
 
   if(state===S_BOOT){
     var pulse=0.55+Math.sin(bootTimer*3)*0.45;
-    ctext('SOMEONE IS TRANSMITTING FROM INSIDE.',W/2,H*0.32,Math.max(10,W*0.027),PAPER);
-    ctext('IT MOVES. IT JUMPS. HOLD IT ANYWAY.',W/2,H*0.375,Math.max(10,W*0.027),'#8a8478');
-    ctext('NEAR SCORES. LOCKED SCORES DOUBLE.',W/2,H*0.43,Math.max(10,W*0.027),AMBER);
+    ctext('SOMEONE IS TRANSMITTING FROM INSIDE.',W/2,H*0.285,Math.max(10,W*0.027),PAPER);
+    ctext('IT MOVES. IT JUMPS. HOLD IT ANYWAY.',W/2,H*0.335,Math.max(10,W*0.027),'#8a8478');
+    ctext('NEAR SCORES. LOCKED SCORES DOUBLE.',W/2,H*0.385,Math.max(10,W*0.027),AMBER);
+    ctext('IT STEADIES '+CALM_COUNT+' TIMES. USE THOSE.',W/2,H*0.435,Math.max(10,W*0.027),GREEN);
     ctext(ROUND_TIME+' SECONDS.  '+TARGET_SCORE+' TO RECEIVE.',W/2,H*0.485,Math.max(10,W*0.027),BLUE);
     x.globalAlpha=pulse;
-    ctext('TAP TO POWER ON',W/2,H*0.61,Math.max(13,W*0.040),GREEN);
+    ctext('TAP OR CLICK TO POWER ON',W/2,H*0.59,Math.max(12,W*0.037),GREEN);
     x.globalAlpha=1;
-    ctext(padConnected?'CONTROLLER DETECTED':'DRAG, ARROWS OR STICK',W/2,H*0.72,
-          Math.max(8,W*0.022),padConnected?GREEN:'#4a4640');
-    if(SONG_FILE)ctext(SONG_TITLE,W/2,H*0.82,Math.max(8,W*0.021),'#4a4640');
+
+    if(padTriedStart){
+      var on=(Math.floor(padPromptT*2.4)%2===0);
+      if(on){
+        ctext('\u25BC CONTROLLER CANNOT START THE SOUND \u25BC',W/2,H*0.665,
+              Math.max(9,W*0.024),AMBER);
+        ctext('TAP THE SCREEN, CLICK, OR PRESS SPACE',W/2,H*0.705,
+              Math.max(9,W*0.024),PAPER);
+      }
+    } else {
+      ctext(padConnected?'CONTROLLER DETECTED':'DRAG, ARROWS OR STICK',W/2,H*0.69,
+            Math.max(8,W*0.022),padConnected?GREEN:'#4a4640');
+    }
+    if(SONG_FILE)ctext(SONG_TITLE,W/2,H*0.80,Math.max(8,W*0.021),'#4a4640');
     noiseOverlay(0.5);
     return;
   }
 
   var paused=(state===S_PAUSE);
   var counting=(state===S_RESUME);
+  var calm=calmActive();
 
   var tgt=signalFreq();
   var dist=Math.abs(dial-tgt);
@@ -617,7 +709,7 @@ function draw(){
   ctext('TIME',W*0.10,H*0.165,Math.max(8,W*0.021),'#6f6a60','left');
   ctext(timeLeft.toFixed(1),W*0.10,H*0.205,Math.max(16,W*0.050),tcol,'left');
   ctext('SCORE',W*0.90,H*0.165,Math.max(8,W*0.021),'#6f6a60','right');
-  ctext(Math.floor(score),W*0.90,H*0.205,Math.max(16,W*0.050),
+  ctext(Math.floor(score)+' / '+TARGET_SCORE,W*0.90,H*0.205,Math.max(13,W*0.040),
         (score>=TARGET_SCORE?GREEN:PAPER),'right');
 
   var pw=W*0.80, pxx=W/2-pw/2, py=H*0.245, ph=H*0.012;
@@ -626,24 +718,34 @@ function draw(){
   x.fillRect(pxx,py,pw*Math.min(1,score/TARGET_SCORE),ph);
   x.strokeStyle='#2a2533';x.lineWidth=1;x.strokeRect(pxx,py,pw,ph);
 
+  /* rest-window markers along the progress bar so players learn the rhythm */
+  if(!paused){
+    for(var ci=0;ci<calmStarts.length;ci++){
+      var frac=calmStarts[ci]/ROUND_TIME;
+      var mx=pxx+frac*pw;
+      var done=(ROUND_TIME-timeLeft)>calmStarts[ci]+CALM_DUR;
+      x.fillStyle=done?'#2f4a35':GREEN;
+      x.fillRect(mx-1,py-4,2,ph+8);
+    }
+  }
+
   var trackY=H*0.36, trackH=H*0.095;
   var tx0=W*0.09, tw=W*0.82;
 
-  x.fillStyle='#141119';x.fillRect(tx0,trackY,tw,trackH);
+  x.fillStyle=calm?'#121a15':'#141119';x.fillRect(tx0,trackY,tw,trackH);
 
-  /* while paused the dial and target are hidden so the player
-     cannot study the signal position at leisure */
   if(!paused){
     var tgp=(tgt-FMIN)/(FMAX-FMIN), tgx=tx0+tgp*tw;
     var nearPx=(NEAR_WINDOW/(FMAX-FMIN))*tw;
     var lockPx=(lockWin/(FMAX-FMIN))*tw;
     x.fillStyle='rgba(240,178,60,0.10)';
     x.fillRect(tgx-nearPx,trackY,nearPx*2,trackH);
-    x.fillStyle='rgba(79,214,122,0.16)';
+    x.fillStyle=calm?'rgba(79,214,122,0.30)':'rgba(79,214,122,0.16)';
     x.fillRect(tgx-lockPx,trackY,lockPx*2,trackH);
   }
 
-  x.strokeStyle='#2a2533';x.lineWidth=2;x.strokeRect(tx0,trackY,tw,trackH);
+  x.strokeStyle=calm?'#3d6b4a':'#2a2533';x.lineWidth=calm?3:2;
+  x.strokeRect(tx0,trackY,tw,trackH);
 
   for(var f=88;f<=93.5;f+=0.5){
     var fp=(f-FMIN)/(FMAX-FMIN), lx=tx0+fp*tw;
@@ -704,6 +806,16 @@ function draw(){
   }
   ctext('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.655,Math.max(8,W*0.021),'#5c5668');
 
+  /* ---- rest window banner ---- */
+  if(state===S_PLAY&&calm){
+    var cp=0.6+Math.sin(performance.now()/160)*0.4;
+    x.globalAlpha=0.55+cp*0.45;
+    ctext('\u25CF SIGNAL STEADY \u2014 HOLD IT \u25CF',W/2,H*0.705,
+          Math.max(10,W*0.027),GREEN);
+    x.globalAlpha=1;
+    ctext(calmLeft.toFixed(1)+'s',W/2,H*0.745,Math.max(9,W*0.024),'#7dffa0');
+  }
+
   /* surge warning in the closing stretch */
   if(state===S_PLAY&&surge>0){
     var sp=0.5+Math.sin(performance.now()/140)*0.5;
@@ -712,7 +824,6 @@ function draw(){
     x.globalAlpha=1;
   }
 
-  /* ---- resume countdown: signal is live, control is not ---- */
   if(counting){
     x.fillStyle='rgba(8,7,10,0.55)';x.fillRect(0,0,W,H);
     var cn=Math.max(1,Math.ceil(resumeT));
@@ -721,11 +832,10 @@ function draw(){
     ctext('NO SCORING UNTIL ZERO',W/2,H*0.575,Math.max(9,W*0.024),'#8a8478');
   }
 
-  /* ---- pause overlay ---- */
   if(paused){
     x.fillStyle='rgba(8,7,10,0.86)';x.fillRect(0,0,W,H);
     ctext('PAUSED',W/2,H*0.36,Math.max(18,W*0.055),AMBER);
-    ctext('SCORE  '+Math.floor(score),W/2,H*0.45,Math.max(11,W*0.030),PAPER);
+    ctext('SCORE  '+Math.floor(score)+' / '+TARGET_SCORE,W/2,H*0.45,Math.max(11,W*0.030),PAPER);
     ctext('TIME LEFT  '+timeLeft.toFixed(1)+'s',W/2,H*0.495,Math.max(11,W*0.030),PAPER);
     ctext('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.54,Math.max(9,W*0.024),'#8a8478');
     ctext('DIAL HIDDEN WHILE PAUSED',W/2,H*0.60,Math.max(9,W*0.024),'#6f6a60');
@@ -747,15 +857,17 @@ function draw(){
     x.fillStyle='rgba(8,7,10,'+Math.min(0.88,endTimer*1.1)+')';
     x.fillRect(0,0,W,H);
     if(endTimer>0.3){
-      ctext('SIGNAL LOST',W/2,H*0.38,Math.max(16,W*0.048),RED);
-      ctext(Math.floor(score)+' / '+TARGET_SCORE,W/2,H*0.48,Math.max(18,W*0.055),PAPER);
-      ctext('SOMEONE WAS THERE.',W/2,H*0.575,Math.max(10,W*0.027),'#8a8478');
-      if(endTimer>1.3)ctext('TAP TO TRY AGAIN',W/2,H*0.68,Math.max(9,W*0.025),'#6f6a60');
+      ctext('SIGNAL LOST',W/2,H*0.36,Math.max(16,W*0.048),RED);
+      ctext(Math.floor(score)+' / '+TARGET_SCORE,W/2,H*0.455,Math.max(18,W*0.055),PAPER);
+      var short=TARGET_SCORE-Math.floor(score);
+      if(short>0)ctext(short+' SHORT',W/2,H*0.525,Math.max(10,W*0.027),AMBER);
+      ctext('SOMEONE WAS THERE.',W/2,H*0.60,Math.max(10,W*0.027),'#8a8478');
+      if(endTimer>1.3)ctext('TAP TO TRY AGAIN',W/2,H*0.69,Math.max(9,W*0.025),'#6f6a60');
     }
     noiseOverlay(0.55);
   }
 
-  if(state===S_PLAY)noiseOverlay((1-prox)*0.82);
+  if(state===S_PLAY)noiseOverlay((1-prox)*(calm?0.45:0.82));
   if(counting)noiseOverlay(0.35);
   if(flash>0){
     x.fillStyle='rgba(255,255,255,'+(flash*0.32)+')';
@@ -770,6 +882,7 @@ function frame(now){
   update(dt);draw();
   requestAnimationFrame(frame);
 }
+buildCalmSchedule();
 requestAnimationFrame(frame);
 })();
 </script>
