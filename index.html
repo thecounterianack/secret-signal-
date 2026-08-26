@@ -15,7 +15,7 @@
 <p>If you're reading this message, it means you found it.</p><p>They put me in a room and told me to write the whole thing myself. Every street. Every building. Every version of him. I was told not to come out until it was finished.</p><p>I don't know how long I've been in here. The tapes come under the door. I write what's on them.</p><p class="whisper">Somewhere along the way I stopped being sure whether I was writing him or he was writing me.</p><p><span class="stn">WCIA 90.7 FM</span> — the station is run by the Counterfeit.</p><p class="warn">Be careful. I think he plans to take over the city. He's gone mad, I tell you.</p><p>You can see a constant video feed of him here:</p><a id="feed" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">▶ OPEN THE FEED</a><button id="close">KEEP LISTENING</button></div></div>
 </div><script>
 (()=>{'use strict';
-const SONG_FILE='song.mp3', ROUND=90, TARGET=1983, FMIN=87.5, FMAX=93.9;
+const SONG_FILE='song.mp3', ROUND=90, TARGET=1500, FMIN=87.5, FMAX=93.9;
 const RED='#e0464a',GREEN='#4fd67a',BLUE='#5aa9f0',AMBER='#f0b23c',PAPER='#d8d2c4';
 const BOOT=0,PLAY=1,WIN=2,LOSE=3,PAUSED=4,COUNT=5;
 const canvas=document.querySelector('#game'),g=canvas.getContext('2d'),pauseBtn=document.querySelector('#pause'),statusEl=document.querySelector('#status'),found=document.querySelector('#found'),noteScore=document.querySelector('#noteScore');
@@ -25,7 +25,7 @@ try{best=parseInt(localStorage.getItem('ss_best')||'0',10)||0}catch(e){}
 function resize(){DPR=Math.min(devicePixelRatio||1,2);let aw=innerWidth,ah=innerHeight,w=aw,h=aw*4/3;if(h>ah){h=ah;w=h*3/4}W=Math.floor(w);H=Math.floor(h);canvas.style.width=W+'px';canvas.style.height=H+'px';canvas.width=W*DPR;canvas.height=H*DPR;g.setTransform(DPR,0,0,DPR,0,0)}
 addEventListener('resize',resize);resize();
 
-let AC=null,master=null,noiseGain=null,tone=null,toneGain=null,track=null,trackGain=null,trackLP=null,audioReady=false,audioLive=false,audioStarting=false,mediaMade=false;
+let AC=null,master=null,noiseGain=null,tone=null,toneGain=null,track=null,trackGain=null,trackLP=null,audioReady=false,audioLive=false,audioStarting=false;
 function message(s,ms=0){statusEl.textContent=s;statusEl.classList.add('on');if(ms)setTimeout(()=>statusEl.classList.remove('on'),ms)}
 function initAudio(){
  if(audioReady)return true;
@@ -37,7 +37,7 @@ function initAudio(){
   tone=AC.createOscillator();tone.type='sine';tone.frequency.value=440;toneGain=AC.createGain();toneGain.gain.value=.0001;tone.connect(toneGain).connect(master);tone.start();
   track=new Audio();track.src=new URL(SONG_FILE,document.baseURI).href;track.loop=true;track.preload='auto';track.playsInline=true;
   track.addEventListener('error',()=>message('COULD NOT LOAD '+SONG_FILE.toUpperCase()+' — CHECK ITS LOCATION'));
-  const src=AC.createMediaElementSource(track);mediaMade=true;trackLP=AC.createBiquadFilter();trackLP.type='lowpass';trackLP.frequency.value=800;trackGain=AC.createGain();trackGain.gain.value=.45;src.connect(trackLP).connect(trackGain).connect(master);
+  const src=AC.createMediaElementSource(track);trackLP=AC.createBiquadFilter();trackLP.type='lowpass';trackLP.frequency.value=800;trackGain=AC.createGain();trackGain.gain.value=.45;src.connect(trackLP).connect(trackGain).connect(master);
   audioReady=true;return true;
  }catch(e){console.error('Audio setup failed:',e);message('AUDIO SETUP FAILED — TAP AGAIN');return false}
 }
@@ -77,8 +77,8 @@ function update(dt){
  if(state===BOOT){bootT+=dt;return}if(state===WIN||state===LOSE){endT+=dt;setAudio(state===WIN?1:.15,state===WIN);return}if(state===PAUSED){setAudio(.1);return}
  if(state===COUNT){moveSignal(dt);countT-=dt;setAudio(Math.max(0,1-Math.abs(dial-signal())/.8)*.5);if(countT<=0){state=PLAY;blip(720,.1)}return}
  if(state!==PLAY)return;time=Math.max(0,time-dt);moveSignal(dt);const dist=Math.abs(dial-signal()),lock=.055*(1-(1-time/ROUND)*.18),near=.22,prox=Math.max(0,1-dist/.8);setAudio(prox);
- if(dist<lock){streak+=dt;bestHold=Math.max(bestHold,streak);const precision=1-dist/lock,mult=1+Math.min(1.8,streak*.3);rate=(7+precision*10)*2*mult;score+=rate*dt;greenPts+=rate*dt}
- else if(dist<near){const taper=1-(dist-lock)/(near-lock),mult=1+Math.min(.6,streak*.3);rate=(11+taper*9)*mult;score+=rate*dt;amberPts+=rate*dt}
+ if(dist<lock){streak+=dt;bestHold=Math.max(bestHold,streak);const precision=1-dist/lock,mult=1+Math.min(1.8,streak*.3);rate=(10+precision*14)*2*mult;score+=rate*dt;greenPts+=rate*dt}
+ else if(dist<near){const taper=1-(dist-lock)/(near-lock),mult=1+Math.min(.6,streak*.3);rate=(16+taper*11)*mult;score+=rate*dt;amberPts+=rate*dt}
  else{streak=0;rate=0}if(time<=0)end();
 }
 function text(s,x,y,size,color,align='center'){g.fillStyle=color;g.font=`bold ${size}px "Courier New",monospace`;g.textAlign=align;g.textBaseline='middle';g.fillText(s,x,y)}
