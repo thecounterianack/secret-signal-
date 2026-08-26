@@ -197,14 +197,15 @@ document.addEventListener('keydown',audioNudge,true);
 
 function setAudio(prox,clear){
   if(!audioReady||!audioLive)return;
-  noiseGain.gain.value=(0.52*(1-prox)+0.04)*(clear?0.05:1);
-  toneGain.gain.value=0.22*prox*prox*(clear?0.15:1);
+  noiseGain.gain.value=(0.20*(1-prox)+0.015)*(clear?0.04:1);
+  toneGain.gain.value=0.07*prox*prox*(clear?0.1:1);
   toneOsc.frequency.value=300+prox*280;
   if(usingTrack&&trackLP&&trackGain){
-    trackLP.frequency.value=clear?18000:(560+prox*1500);
-    trackGain.gain.value=clear?0.70:(0.04+prox*0.20);
+    trackLP.frequency.value=clear?18000:(700+prox*3200);
+    trackGain.gain.value=clear?0.85:(0.22+prox*0.42);
   }
 }
+
 function blip(freq,dur,vol){
   if(!audioReady||!audioLive)return;
   try{
