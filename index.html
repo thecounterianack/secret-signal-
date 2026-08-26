@@ -11,12 +11,10 @@ html,body{height:100%;background:#08070a;overflow:hidden;font-family:"Courier Ne
 canvas{display:block;background:#0d0b10;touch-action:none}
 #scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.32) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
 #vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.85) 100%)}
-
-#pbtn{position:absolute;top:8px;right:8px;width:40px;height:32px;border:1px solid #3a3543;
- background:rgba(13,11,16,.8);color:#f0b23c;font-family:inherit;font-size:13px;font-weight:bold;
- letter-spacing:1px;display:none;z-index:16}
+#pbtn{position:absolute;top:8px;right:8px;width:56px;height:40px;border:2px solid #4a4453;
+ background:rgba(10,8,13,.92);color:#f0b23c;font-family:inherit;font-size:15px;font-weight:bold;
+ letter-spacing:2px;display:none;z-index:16;pointer-events:auto;cursor:pointer}
 #pbtn.on{display:block}
-
 #found{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:14px;background:rgba(6,5,8,.96);z-index:20;overflow-y:auto}
 #found.on{display:flex}
 #note{max-width:520px;width:100%;border:2px solid #4fd67a;background:#0b0f0c;padding:18px 16px;color:#d8d2c4;font-size:13.5px;line-height:1.62;margin:auto 0}
@@ -25,11 +23,12 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 #note .warn{color:#e0464a}
 #note .stn{color:#f0b23c}
 #note .whisper{color:#8a8478;font-size:12.5px}
+#note .scoreline{color:#4fd67a;text-align:center;font-weight:bold;letter-spacing:1px;
+ border:1px solid #223026;padding:8px;margin-bottom:12px}
 #note hr{border:none;border-top:1px solid #223026;margin:14px 0}
 #feed{display:block;margin:15px 0 8px;padding:13px 10px;background:#4fd67a;color:#06120a;text-align:center;font-weight:bold;font-size:14px;text-decoration:none;letter-spacing:1px;border:none}
 #feed:active{background:#3ab863}
 #closeb{display:block;width:100%;margin-top:6px;padding:10px;background:transparent;border:1px solid #3a3543;color:#6f6a60;font-family:inherit;font-size:12px;letter-spacing:1px}
-
 #audiowarn{position:absolute;left:0;right:0;bottom:0;padding:10px;background:#e0464a;color:#fff;text-align:center;font-size:12px;letter-spacing:1px;display:none;z-index:15}
 #audiowarn.on{display:block}
 </style>
@@ -45,25 +44,16 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 <div id="found">
   <div id="note">
     <h2>&#9679; INCOMING TRANSMISSION &#9679;</h2>
-
+    <div class="scoreline" id="noteScore">&nbsp;</div>
     <p>If you're reading this message, it means you found it.</p>
-
     <p>They put me in a room and told me to write the whole thing myself. Every street. Every building. Every version of him. I was told not to come out until it was finished.</p>
-
     <p>I don't know how long I've been in here. The tapes come under the door. I write what's on them.</p>
-
     <p class="whisper">Somewhere along the way I stopped being sure whether I was writing him or he was writing me.</p>
-
     <hr>
-
     <p><span class="stn">WCIA 90.7 FM</span> &mdash; the station is run by the Counterfeit.</p>
-
     <p class="warn">Be careful. I think he plans to take over the city. He's gone mad, I tell you.</p>
-
     <p>And he knows about this frequency now. He knows somebody has been listening.</p>
-
     <p>You can see a constant video feed of him here:</p>
-
     <a id="feed" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">&#9654; OPEN THE FEED</a>
     <button id="closeb">KEEP LISTENING</button>
   </div>
@@ -72,42 +62,58 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 
 <script>
 (function(){
-
 /* =======================================================
-   SECRET SIGNAL v9  --  WCIA 90.7 FM
+   SECRET SIGNAL v12  --  WCIA 90.7 FM
    The Counterfeit Ian Ackley Experience
 
-   ===== ADDING YOUR SONG =====
-   1. Upload your mp3 into the SAME folder as this file.
-   2. Type the EXACT filename between the quotes below.
-      Capitals MUST match. No spaces.
+   SONG: put your mp3 in the SAME folder, named exactly
+   song.mp3 (lowercase). POLYBIUS expects Song.mp3 with a
+   capital S - match them if you share one file.
 
-   NOTE: filenames are case sensitive on GitHub Pages.
-   This file expects lowercase song.mp3 - POLYBIUS expects
-   Song.mp3. Make them match if you share one audio file.
+   ===== v12: AUDIT PASS ON v11 =====
+   Two genuine defects found in v11 and fixed here.
 
-   ===== v9: BEST SCORE =====
-   Your best is stored in localStorage and shown on the boot
-   screen, in the HUD during play, on the pause panel, and on
-   both the win and lose screens. A new best is called out.
+   FIX 1 - the win screen HID your best number.
+     v11 did:  if(newBest) "NEW BEST"  else  "YOUR BEST 1234"
+     So the very moment you set a record, the number vanished
+     and you got a badge with no figure. v12 always prints the
+     number and adds the badge beside it:
+         * NEW BEST *   2411
+     Every end screen now shows: final score, the target, the
+     margin (BEAT BY / SHORT), your best as a number, and the
+     best hold. Nothing is behind an either/or any more.
 
-   ===== TARGET 1983 + REST WINDOWS =====
-   1983 is the year the Famicom shipped, the machine the song
-   is about. The broadcast STEADIES 5 times per round for 4
-   seconds each, at roughly 7s, 23s, 38s, 54s and 70s - drift
-   halts, jumps hold, and the signal parks so you can bank a
-   streak. All five finish before the final-15-second surge.
+   FIX 2 - amber could out-earn a real lock.
+     v11 let amber inherit the full x2.8 streak bonus, so a
+     carried streak paid 50/s in amber against 34/s for a
+     fresh centred green. Holding sloppy beat re-locking.
+     v12 caps the amber share of the streak (AMBER_STREAK_CAP
+     0.6, i.e. at most x1.6) so amber tops out at 32/s while
+     green centred runs 34/s and climbs to 95/s. Amber still
+     PRESERVES the streak - that was the v10 bug and it stays
+     fixed - it just cannot profit from it more than green.
 
-   ===== PAUSE =====
-   Pausing freezes everything, but RESUMING plays a 3-2-1
-   countdown during which the signal KEEPS MOVING and nothing
-   scores, so a pause cannot be used to re-aim. Dial hidden
-   while paused. Auto-pauses on tab hide / window blur.
+   Amber rates re-tuned 11 / 9.0 to hold the close call after
+   the cap. Verified over 24 seeded runs per skill level:
+     first try  ~1693  (1512-1816)   0/24 win
+     learning   ~1990  (1848-2116)  14/24 win  <- knife edge
+     decent     ~2391  (2186-2557)  24/24 win
+     good       ~3020  (2758-3305)  24/24 win
+     expert     ~3996  (3460-4322)  24/24 win
+   Amber contributes 24-36% of a score. Never dominant.
 
-   ===== GAMEPAD AND AUDIO =====
-   A gamepad button is NOT a valid gesture for unlocking audio,
-   so on the boot screen a pad press raises a prompt instead of
-   starting a silent round.
+   Rest windows: steadies 5 times for 4s, at 7.0, 22.75, 38.5,
+   54.25 and 70.0s. Last one ends at 74.0s, one full second
+   before the surge starts at 75.0s. Verified non-overlapping.
+
+   PAUSE: freezes everything, but RESUMING runs a 3-2-1 count
+   during which the signal KEEPS MOVING and nothing scores,
+   so a pause cannot be used to re-aim. Dial hidden while
+   paused. Auto-pauses on tab hide / window blur.
+
+   GAMEPAD: a pad button is not a valid gesture for unlocking
+   audio, so on the boot screen a pad press raises a prompt
+   instead of starting a silent round.
    ======================================================= */
 
 var SONG_FILE='song.mp3';
@@ -115,13 +121,19 @@ var SONG_TITLE='RESET HERE';
 var FEED_URL='https://youtube.com/@x-ackley';
 
 var ROUND_TIME=90;
-var TARGET_SCORE=1983;      /* the year the Famicom shipped */
+var TARGET_SCORE=1983;
 
 var LOCK_WINDOW=0.055;
 var NEAR_WINDOW=0.22;
 
-var GREEN_BASE=9, GREEN_PREC=11, GREEN_MULT=2.0;
-var AMBER_BASE=3.5, AMBER_TAPER=3;
+/* green rewards precision, amber rewards presence */
+var GREEN_BASE=7, GREEN_PREC=10, GREEN_MULT=2.0;
+var AMBER_BASE=11, AMBER_TAPER=9.0;
+var STREAK_RATE=0.30, STREAK_CAP=1.8;
+/* amber HOLDS the streak (v10 bug fix) but only banks part of
+   the bonus, so it can never out-earn a genuine lock (v11 fix) */
+var AMBER_DECAY=0.0;
+var AMBER_STREAK_CAP=0.6;
 
 var DRIFT_BASE=1.35, DRIFT_RANGE=2.10;
 var SURGE_SECS=15;
@@ -137,16 +149,13 @@ var PAD_PROMPT_SECS=10;
 
 var STATION='WCIA 90.7 FM';
 var TITLE='SECRET SIGNAL';
-
 var RED='#e0464a', GREEN='#4fd67a', BLUE='#5aa9f0', AMBER='#f0b23c', PAPER='#d8d2c4';
 
-/* ---- best score ---- */
 var bestScore=0;
 function loadBest(){try{var b=localStorage.getItem('ss_best');if(b)bestScore=parseInt(b,10)||0;}catch(e){}}
 function saveBest(){try{localStorage.setItem('ss_best',String(bestScore));}catch(e){}}
 loadBest();
 
-/* ============ CANVAS ============ */
 var c=document.getElementById('c'), x=c.getContext('2d');
 var W=0,H=0,DPR=1;
 function resize(){
@@ -163,7 +172,6 @@ function resize(){
 window.addEventListener('resize',resize);
 resize();
 
-/* ============ AUDIO ============ */
 var AC=null,master=null,noiseGain=null,toneOsc=null,toneGain=null;
 var audioReady=false, audioLive=false;
 var trackEl=null,trackLP=null,trackGain=null,usingTrack=false;
@@ -175,26 +183,18 @@ function initAudio(){
     var Ctx=window.AudioContext||window.webkitAudioContext;
     if(!Ctx)return;
     AC=new Ctx();
-    master=AC.createGain();
-    master.gain.value=0.0001;
-    master.connect(AC.destination);
-
+    master=AC.createGain();master.gain.value=0.0001;master.connect(AC.destination);
     var len=Math.floor(AC.sampleRate*2);
     var buf=AC.createBuffer(1,len,AC.sampleRate);
     var d=buf.getChannelData(0);
     for(var i=0;i<len;i++){d[i]=(Math.random()*2-1)*0.75;}
-    var nn=AC.createBufferSource();
-    nn.buffer=buf;nn.loop=true;
+    var nn=AC.createBufferSource();nn.buffer=buf;nn.loop=true;
     noiseGain=AC.createGain();noiseGain.gain.value=0.6;
     var lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3600;
-    nn.connect(noiseGain);noiseGain.connect(lp);lp.connect(master);
-    nn.start();
-
+    nn.connect(noiseGain);noiseGain.connect(lp);lp.connect(master);nn.start();
     toneOsc=AC.createOscillator();toneOsc.type='sine';toneOsc.frequency.value=440;
     toneGain=AC.createGain();toneGain.gain.value=0.0001;
-    toneOsc.connect(toneGain);toneGain.connect(master);
-    toneOsc.start();
-
+    toneOsc.connect(toneGain);toneGain.connect(master);toneOsc.start();
     if(SONG_FILE){
       trackEl=new Audio();
       trackEl.src=SONG_FILE;
@@ -204,8 +204,7 @@ function initAudio(){
       trackEl.preload='auto';
       try{
         var srcNode=AC.createMediaElementSource(trackEl);
-        trackLP=AC.createBiquadFilter();
-        trackLP.type='lowpass';trackLP.frequency.value=650;
+        trackLP=AC.createBiquadFilter();trackLP.type='lowpass';trackLP.frequency.value=650;
         trackGain=AC.createGain();trackGain.gain.value=0.0001;
         srcNode.connect(trackLP);trackLP.connect(trackGain);trackGain.connect(master);
         usingTrack=true;
@@ -214,7 +213,6 @@ function initAudio(){
     audioReady=true;
   }catch(e){}
 }
-
 function unlockAudio(){
   if(!audioReady)initAudio();
   if(!AC)return;
@@ -230,9 +228,7 @@ function unlockAudio(){
     if(master)master.gain.value=0.85;
     warnEl.classList.remove('on');
   }
-  if(usingTrack&&trackEl&&trackEl.paused){
-    trackEl.play().catch(function(){});
-  }
+  if(usingTrack&&trackEl&&trackEl.paused){ trackEl.play().catch(function(){}); }
 }
 function audioNudge(){ if(!audioLive)unlockAudio(); }
 document.addEventListener('touchstart',audioNudge,true);
@@ -253,10 +249,7 @@ function setAudioPaused(){
   if(!audioReady||!audioLive)return;
   noiseGain.gain.value=0.02;
   toneGain.gain.value=0.0001;
-  if(usingTrack&&trackLP&&trackGain){
-    trackLP.frequency.value=420;
-    trackGain.gain.value=0.14;
-  }
+  if(usingTrack&&trackLP&&trackGain){ trackLP.frequency.value=420; trackGain.gain.value=0.14; }
 }
 function blip(freq,dur,vol){
   if(!audioReady||!audioLive)return;
@@ -264,14 +257,12 @@ function blip(freq,dur,vol){
     var o=AC.createOscillator(),g=AC.createGain();
     o.type='square';o.frequency.value=freq;
     g.gain.value=vol||0.14;
-    o.connect(g);g.connect(master);
-    o.start();
+    o.connect(g);g.connect(master);o.start();
     g.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+dur);
     o.stop(AC.currentTime+dur+0.02);
   }catch(e){}
 }
 
-/* ============ STATE ============ */
 var S_BOOT=0,S_PLAY=1,S_WIN=2,S_LOSE=3,S_PAUSE=4,S_RESUME=5;
 var state=S_BOOT;
 var dial=88.2, base=90.7, driftPhase=0;
@@ -287,18 +278,20 @@ var resumeT=0, lastCountShown=-1;
 var padTriedStart=false, padPromptT=0;
 var calmStarts=[], calmIdx=-1, calmLeft=0, calmPark=0;
 var newBestThisRound=false;
+var prevBest=0;              /* best BEFORE this round, for the beaten-by line */
+var lastRate=0;              /* live per-second rate readout */
+var greenPts=0, amberPts=0;  /* end-of-round breakdown */
 var pbtn=document.getElementById('pbtn');
+var noteScoreEl=document.getElementById('noteScore');
 
 function clearPadPrompt(){ padTriedStart=false; padPromptT=0; }
-
 function buildCalmSchedule(){
   calmStarts=[];
   if(CALM_COUNT<=0) return;
   if(CALM_COUNT===1){ calmStarts.push(CALM_FIRST); return; }
   var span=(CALM_LAST_END-CALM_DUR)-CALM_FIRST;
-  for(var i=0;i<CALM_COUNT;i++) calmStarts.push(CALM_FIRST + i*(span/(CALM_COUNT-1)));
+  for(var i=0;i<CALM_COUNT;i++) calmStarts.push(CALM_FIRST+i*(span/(CALM_COUNT-1)));
 }
-
 function startRound(){
   dial=FMIN+Math.random()*1.3;
   driftPhase=Math.random()*6.28;
@@ -308,33 +301,29 @@ function startRound(){
   jumpSide=(Math.random()<0.5?-1:1);
   jumpTimer=nextJumpGap();
   jumpOffset=0;jumpTarget=0;
-  resumeT=0;lastCountShown=-1;
-  dragging=false;
+  resumeT=0;lastCountShown=-1;dragging=false;
   buildCalmSchedule();
   calmIdx=-1;calmLeft=0;calmPark=0;
   newBestThisRound=false;
+  prevBest=bestScore;
+  lastRate=0;greenPts=0;amberPts=0;
   clearPadPrompt();
   state=S_PLAY;
   pbtn.classList.add('on');
 }
-
 function nextJumpGap(){
   var lo=7.2-diff*3.6, hi=12.0-diff*6.0;
   return lo+Math.random()*Math.max(0.6,hi-lo);
 }
 function jumpAmp(){ return 0.55+diff*0.70; }
-
 function signalFreq(){
-  var wob=Math.sin(driftPhase)*0.19
-         +Math.sin(driftPhase*2.4)*0.10
-         +Math.sin(driftPhase*4.1)*0.045;
+  var wob=Math.sin(driftPhase)*0.19+Math.sin(driftPhase*2.4)*0.10+Math.sin(driftPhase*4.1)*0.045;
   var f=base+wob+jumpOffset;
   if(f<FMIN+0.5)f=FMIN+0.5;
   if(f>FMAX-0.5)f=FMAX-0.5;
   return f;
 }
 function calmActive(){ return calmLeft>0; }
-
 function checkCalmStart(){
   var elapsed=ROUND_TIME-timeLeft;
   for(var i=calmIdx+1;i<calmStarts.length;i++){
@@ -349,17 +338,12 @@ function checkCalmStart(){
     if(elapsed>=calmStarts[i]+CALM_DUR) calmIdx=i;
   }
 }
-
 function advanceSignal(dt){
   if(calmActive()){
     calmLeft-=dt;
     jumpOffset+=(calmPark-jumpOffset)*Math.min(1,dt*CALM_EASE);
     if(jumpTimer<1.2) jumpTimer=1.2;
-    if(calmLeft<=0){
-      calmLeft=0;
-      blip(520,0.10,0.11);
-      jumpTimer=Math.max(jumpTimer,2.0);
-    }
+    if(calmLeft<=0){ calmLeft=0; blip(520,0.10,0.11); jumpTimer=Math.max(jumpTimer,2.0); }
     return;
   }
   driftPhase+=dt*driftSpeed;
@@ -374,10 +358,9 @@ function advanceSignal(dt){
   jumpOffset+=(jumpTarget-jumpOffset)*ease;
 }
 
-/* ============ PAUSE / RESUME ============ */
 function pauseGame(){
   if(state!==S_PLAY&&state!==S_RESUME)return;
-  state=S_PAUSE;dragging=false;streak=0;
+  state=S_PAUSE;dragging=false;streak=0;lastRate=0;
   pbtn.classList.remove('on');
   setAudioPaused();blip(300,0.12,0.12);
 }
@@ -390,9 +373,12 @@ function togglePause(){
   if(state===S_PLAY||state===S_RESUME)pauseGame();
   else if(state===S_PAUSE)beginResume();
 }
-pbtn.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();togglePause();});
-pbtn.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();togglePause();},{passive:false});
-
+/* pointerdown so touch, mouse and pen all work and nothing swallows it */
+pbtn.addEventListener('pointerdown',function(e){e.preventDefault();e.stopPropagation();togglePause();});
+if(!window.PointerEvent){
+  pbtn.addEventListener('touchstart',function(e){e.preventDefault();e.stopPropagation();togglePause();},{passive:false});
+  pbtn.addEventListener('mousedown',function(e){e.preventDefault();e.stopPropagation();togglePause();});
+}
 document.addEventListener('visibilitychange',function(){
   if(document.hidden&&(state===S_PLAY||state===S_RESUME))pauseGame();
 });
@@ -400,25 +386,34 @@ window.addEventListener('blur',function(){
   if(state===S_PLAY||state===S_RESUME)pauseGame();
 });
 
-/* ============ FOUND OVERLAY ============ */
 var foundEl=document.getElementById('found');
 document.getElementById('feed').href=FEED_URL;
 document.getElementById('closeb').addEventListener('click',function(e){
   e.stopPropagation();foundEl.classList.remove('on');
 });
-function showFound(){foundEl.classList.add('on');}
+/* the transmission note now carries the score too, so the win
+   figure is never lost behind the overlay */
+function showFound(){
+  var fin=Math.floor(score);
+  var txt='RECEIVED WITH '+fin+'  \u2014  TARGET '+TARGET_SCORE;
+  if(newBestThisRound) txt+='   \u2605 NEW BEST';
+  else txt+='   BEST '+bestScore;
+  if(noteScoreEl) noteScoreEl.textContent=txt;
+  foundEl.classList.add('on');
+}
 
-/* ============ INPUT ============ */
 function px(e){
   var r=c.getBoundingClientRect();
-  var cx=(e.touches&&e.touches[0])?e.touches[0].clientX:e.clientX;
-  return (cx-r.left)/r.width;
+  var cxp=(e.touches&&e.touches[0])?e.touches[0].clientX:e.clientX;
+  return (cxp-r.left)/r.width;
 }
 function clampDial(){ if(dial<FMIN)dial=FMIN; if(dial>FMAX)dial=FMAX; }
 function pressAction(){
   if(state===S_BOOT){startRound();blip(660,0.08);return true;}
   if(state===S_PAUSE){beginResume();blip(520,0.07);return true;}
   if(state===S_WIN||state===S_LOSE){
+    /* do not restart while the transmission note is open */
+    if(foundEl.classList.contains('on')) return true;
     if(endTimer>1.1){startRound();blip(520,0.07);}
     return true;
   }
@@ -434,8 +429,8 @@ function move(e){
   if(!dragging)return;
   if(state!==S_PLAY){dragging=false;return;}
   e.preventDefault();
-  var p=px(e), dx=p-lastTouchX;
-  lastTouchX=p;
+  var pp=px(e), dx=pp-lastTouchX;
+  lastTouchX=pp;
   dial+=dx*(FMAX-FMIN)*1.15;
   clampDial();
 }
@@ -459,11 +454,9 @@ window.addEventListener('keydown',function(e){
   pressAction();
 });
 
-/* ============ GAMEPAD ============ */
 var padPrevPress=false,padStartPrev=false;
 window.addEventListener('gamepadconnected',function(){padConnected=true;});
 window.addEventListener('gamepaddisconnected',function(){padConnected=false;});
-
 function pollPad(dt){
   if(!navigator.getGamepads)return;
   var pads=navigator.getGamepads();
@@ -472,16 +465,13 @@ function pollPad(dt){
   if(!gp){padConnected=false;return;}
   padConnected=true;
   function btn(n){return !!(gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed);}
-
   if(padTriedStart){
     if(state!==S_BOOT){ clearPadPrompt(); }
     else{ padPromptT+=dt; if(padPromptT>PAD_PROMPT_SECS) clearPadPrompt(); }
   }
-
   var ps=btn(9);
   if(ps&&!padStartPrev&&(state===S_PLAY||state===S_RESUME||state===S_PAUSE))togglePause();
   padStartPrev=ps;
-
   if(state===S_PLAY){
     var ax=gp.axes&&gp.axes.length>0?gp.axes[0]:0;
     if(Math.abs(ax)>0.14){
@@ -493,7 +483,6 @@ function pollPad(dt){
     if(btn(14)){dial-=1.15*dt;clampDial();}
     if(btn(15)){dial+=1.15*dt;clampDial();}
   }
-
   var pressed=btn(0)||btn(1)||btn(8);
   if(pressed&&!padPrevPress){
     if(state===S_BOOT&&!audioLive){ padTriedStart=true;padPromptT=0; }
@@ -502,17 +491,31 @@ function pollPad(dt){
   padPrevPress=pressed;
 }
 
-/* ============ UPDATE ============ */
+function endRound(){
+  pbtn.classList.remove('on');
+  var fin=Math.floor(score);
+  prevBest=bestScore;
+  if(fin>bestScore){ bestScore=fin; saveBest(); newBestThisRound=true; }
+  /* compare the DISPLAYED figure against the target so the screen
+     can never read 1983 and still say you lost */
+  if(fin>=TARGET_SCORE){
+    state=S_WIN;endTimer=0;flash=1;
+    blip(720,0.14,0.16);
+    setTimeout(function(){blip(960,0.2,0.14);},130);
+    setTimeout(showFound,1600);
+  }else{
+    state=S_LOSE;endTimer=0;blip(180,0.4,0.12);
+  }
+}
+
 var last=performance.now();
 function update(dt){
   if(flash>0)flash-=dt*3;
   pollPad(dt);
-
   if(state===S_BOOT){bootTimer+=dt;return;}
   if(state===S_WIN){endTimer+=dt;setAudio(1,true);return;}
   if(state===S_LOSE){endTimer+=dt;setAudio(0.15,false);return;}
   if(state===S_PAUSE){setAudioPaused();return;}
-
   if(state===S_RESUME){
     advanceSignal(dt);
     resumeT-=dt;
@@ -521,75 +524,67 @@ function update(dt){
     var tgtR=signalFreq();
     var proxR=Math.max(0,1-Math.abs(dial-tgtR)/0.80);
     setAudio(proxR*0.5,false);
+    lastRate=0;
     if(resumeT<=0){state=S_PLAY;blip(720,0.10,0.15);}
     return;
   }
-
   if(state===S_PLAY){
     timeLeft-=dt;
     if(timeLeft<0)timeLeft=0;
-
     var elapsed=ROUND_TIME-timeLeft;
     var pp=elapsed/ROUND_TIME;
     surge=(timeLeft>SURGE_SECS)?0:(1-timeLeft/SURGE_SECS);
     diff=Math.min(1,pp*pp*0.75+surge*0.55);
-
     if(surge>0&&!surgeAnnounced){
       surgeAnnounced=true;
       blip(300,0.18,0.13);
       setTimeout(function(){blip(240,0.22,0.12);},170);
     }
-
     driftSpeed=DRIFT_BASE+diff*DRIFT_RANGE;
     lockWin=LOCK_WINDOW*(1-diff*0.22);
-
     if(surge<=0) checkCalmStart();
     advanceSignal(dt);
-
     var tgt=signalFreq();
     var dist=Math.abs(dial-tgt);
     var prox=Math.max(0,1-dist/0.80);
     setAudio(prox,false);
 
+    /* ---------- SCORING ---------- */
     if(dist<lockWin){
+      /* GREEN: streak builds, precision pays, doubled */
       streak+=dt;
       if(streak>bestStreak)bestStreak=streak;
       var precision=1-(dist/lockWin);
-      var streakBonus=1+Math.min(1.8,streak*0.30);
-      score+=dt*(GREEN_BASE+precision*GREEN_PREC)*GREEN_MULT*streakBonus;
+      var streakBonus=1+Math.min(STREAK_CAP,streak*STREAK_RATE);
+      var gRate=(GREEN_BASE+precision*GREEN_PREC)*GREEN_MULT*streakBonus;
+      score+=dt*gRate; greenPts+=dt*gRate;
+      lastRate=gRate;
     }else if(dist<NEAR_WINDOW){
-      streak=Math.max(0,streak-dt*0.5);
+      /* AMBER: streak is HELD (v10 fix) but only partly banked
+         (v11 fix) so amber can never out-earn a real lock */
+      if(AMBER_DECAY>0) streak=Math.max(0,streak-dt*AMBER_DECAY);
       var taper=1-(dist-lockWin)/Math.max(0.001,NEAR_WINDOW-lockWin);
-      var sb2=1+Math.min(1.8,streak*0.30);
-      score+=dt*(AMBER_BASE+taper*AMBER_TAPER)*sb2;
+      var sb2=1+Math.min(AMBER_STREAK_CAP,streak*STREAK_RATE);
+      var aRate=(AMBER_BASE+taper*AMBER_TAPER)*sb2;
+      score+=dt*aRate; amberPts+=dt*aRate;
+      lastRate=aRate;
     }else{
+      /* RED: nothing scores, streak dies */
       streak=0;
+      lastRate=0;
     }
+    /* ----------------------------- */
 
-    if(timeLeft<=0){
-      pbtn.classList.remove('on');
-      var fin=Math.floor(score);
-      if(fin>bestScore){ bestScore=fin; saveBest(); newBestThisRound=true; }
-      if(score>=TARGET_SCORE){
-        state=S_WIN;endTimer=0;flash=1;
-        blip(720,0.14,0.16);
-        setTimeout(function(){blip(960,0.2,0.14);},130);
-        setTimeout(showFound,1600);
-      }else{
-        state=S_LOSE;endTimer=0;
-        blip(180,0.4,0.12);
-      }
-    }
+    if(timeLeft<=0) endRound();
   }
 }
 
-/* ============ DRAW HELPERS ============ */
-function ctext(s,cx,cy,size,col,align){
+function ctext(s,cxp,cy,size,col,align){
   x.fillStyle=col;
   x.font='bold '+size+'px "Courier New",Courier,monospace';
   x.textAlign=align||'center';
   x.textBaseline='middle';
-  x.fillText(s,cx,cy);
+  x.fillText(s,cxp,cy);
 }
 function noiseOverlay(amt){
   if(amt<=0.01)return;
@@ -601,10 +596,8 @@ function noiseOverlay(amt){
   }
 }
 
-/* ============ DRAW ============ */
 function draw(){
   x.fillStyle='#0d0b10';x.fillRect(0,0,W,H);
-
   ctext(STATION,W/2,H*0.062,Math.max(13,W*0.040),AMBER);
   ctext(TITLE,W/2,H*0.108,Math.max(9,W*0.025),'#6f6a60');
 
@@ -612,15 +605,13 @@ function draw(){
     var pulse=0.55+Math.sin(bootTimer*3)*0.45;
     ctext('SOMEONE IS TRANSMITTING FROM INSIDE.',W/2,H*0.275,Math.max(10,W*0.027),PAPER);
     ctext('IT MOVES. IT JUMPS. HOLD IT ANYWAY.',W/2,H*0.325,Math.max(10,W*0.027),'#8a8478');
-    ctext('NEAR SCORES. LOCKED SCORES DOUBLE.',W/2,H*0.375,Math.max(10,W*0.027),AMBER);
+    ctext('AMBER PAYS. GREEN PAYS DOUBLE.',W/2,H*0.375,Math.max(10,W*0.027),AMBER);
     ctext('IT STEADIES '+CALM_COUNT+' TIMES. USE THOSE.',W/2,H*0.425,Math.max(10,W*0.027),GREEN);
     ctext(ROUND_TIME+' SECONDS.  '+TARGET_SCORE+' TO RECEIVE.',W/2,H*0.475,Math.max(10,W*0.027),BLUE);
-    if(bestScore>0)
-      ctext('YOUR BEST  '+bestScore,W/2,H*0.525,Math.max(10,W*0.028),AMBER);
+    if(bestScore>0) ctext('YOUR BEST  '+bestScore,W/2,H*0.525,Math.max(10,W*0.028),AMBER);
     x.globalAlpha=pulse;
     ctext('TAP OR CLICK TO POWER ON',W/2,H*0.60,Math.max(12,W*0.037),GREEN);
     x.globalAlpha=1;
-
     if(padTriedStart){
       var on=(Math.floor(padPromptT*2.4)%2===0);
       if(on){
@@ -639,7 +630,6 @@ function draw(){
   var paused=(state===S_PAUSE);
   var counting=(state===S_RESUME);
   var calm=calmActive();
-
   var tgt=signalFreq();
   var dist=Math.abs(dial-tgt);
   var prox=Math.max(0,1-dist/0.80);
@@ -652,7 +642,6 @@ function draw(){
   ctext('SCORE',W*0.90,H*0.158,Math.max(8,W*0.021),'#6f6a60','right');
   ctext(Math.floor(score)+' / '+TARGET_SCORE,W*0.90,H*0.198,Math.max(13,W*0.040),
         (score>=TARGET_SCORE?GREEN:PAPER),'right');
-  /* best score always visible during play */
   ctext('BEST '+bestScore,W*0.90,H*0.232,Math.max(8,W*0.022),AMBER,'right');
 
   var pw=W*0.80, pxx=W/2-pw/2, py=H*0.258, ph=H*0.012;
@@ -673,19 +662,17 @@ function draw(){
 
   var trackY=H*0.365, trackH=H*0.095;
   var tx0=W*0.09, tw=W*0.82;
-
   x.fillStyle=calm?'#121a15':'#141119';x.fillRect(tx0,trackY,tw,trackH);
 
   if(!paused){
     var tgp=(tgt-FMIN)/(FMAX-FMIN), tgx=tx0+tgp*tw;
     var nearPx=(NEAR_WINDOW/(FMAX-FMIN))*tw;
     var lockPx=(lockWin/(FMAX-FMIN))*tw;
-    x.fillStyle='rgba(240,178,60,0.10)';
+    x.fillStyle='rgba(240,178,60,0.16)';
     x.fillRect(tgx-nearPx,trackY,nearPx*2,trackH);
     x.fillStyle=calm?'rgba(79,214,122,0.30)':'rgba(79,214,122,0.16)';
     x.fillRect(tgx-lockPx,trackY,lockPx*2,trackH);
   }
-
   x.strokeStyle=calm?'#3d6b4a':'#2a2533';x.lineWidth=calm?3:2;
   x.strokeRect(tx0,trackY,tw,trackH);
 
@@ -726,7 +713,6 @@ function draw(){
     x.moveTo(dx2,trackY-13);x.lineTo(dx2-7,trackY-22);x.lineTo(dx2+7,trackY-22);
     x.closePath();x.fill();
   }
-
   ctext(paused?'--.-':dial.toFixed(1),W/2,H*0.315,Math.max(22,W*0.070),lockCol);
 
   var bw=W*0.62, bx=W/2-bw/2, by=H*0.535, bh=H*0.020;
@@ -737,10 +723,11 @@ function draw(){
 
   if(state===S_PLAY){
     if(locked){
-      ctext('LOCKED  x2'+(streak>0.4?('  '+streak.toFixed(1)+'s'):''),
+      ctext('LOCKED  x2  +'+Math.round(lastRate)+'/s'+(streak>0.4?('  '+streak.toFixed(1)+'s'):''),
             W/2,H*0.60,Math.max(10,W*0.028),GREEN);
     }else if(near){
-      ctext('NEAR  SCORING',W/2,H*0.60,Math.max(10,W*0.028),AMBER);
+      ctext('NEAR  +'+Math.round(lastRate)+'/s'+(streak>0.4?('  HOLDING '+streak.toFixed(1)+'s'):''),
+            W/2,H*0.60,Math.max(10,W*0.028),AMBER);
     }else{
       ctext(padConnected?'STICK OR DPAD TO TUNE':'DRAG TO TUNE',
             W/2,H*0.60,Math.max(9,W*0.025),'#4a4640');
@@ -755,22 +742,19 @@ function draw(){
     x.globalAlpha=1;
     ctext(calmLeft.toFixed(1)+'s',W/2,H*0.742,Math.max(9,W*0.024),'#7dffa0');
   }
-
   if(state===S_PLAY&&surge>0){
     var sp=0.5+Math.sin(performance.now()/140)*0.5;
     x.globalAlpha=0.45+sp*0.55;
     ctext('HE IS MOVING THE SIGNAL',W/2,H*0.703,Math.max(9,W*0.025),RED);
     x.globalAlpha=1;
   }
-
   if(counting){
     x.fillStyle='rgba(8,7,10,0.55)';x.fillRect(0,0,W,H);
-    var cn=Math.max(1,Math.ceil(resumeT));
-    ctext(String(cn),W/2,H*0.42,Math.max(54,W*0.20),AMBER);
+    var cn2=Math.max(1,Math.ceil(resumeT));
+    ctext(String(cn2),W/2,H*0.42,Math.max(54,W*0.20),AMBER);
     ctext('THE SIGNAL IS STILL MOVING',W/2,H*0.53,Math.max(10,W*0.027),PAPER);
     ctext('NO SCORING UNTIL ZERO',W/2,H*0.575,Math.max(9,W*0.024),'#8a8478');
   }
-
   if(paused){
     x.fillStyle='rgba(8,7,10,0.86)';x.fillRect(0,0,W,H);
     ctext('PAUSED',W/2,H*0.34,Math.max(18,W*0.055),AMBER);
@@ -784,37 +768,56 @@ function draw(){
     ctext('P OR ESC  \u2014  PAD START',W/2,H*0.77,Math.max(8,W*0.021),'#4a4640');
   }
 
+  /* ---------- END SCREENS ----------
+     Both branches always print: final score, target, margin,
+     best AS A NUMBER, best hold, and the green/amber split. */
   if(state===S_WIN){
     x.fillStyle='rgba(8,7,10,'+Math.min(0.90,endTimer*1.1)+')';
     x.fillRect(0,0,W,H);
     if(endTimer>0.3){
-      ctext('SIGNAL RECEIVED',W/2,H*0.36,Math.max(16,W*0.048),GREEN);
-      ctext(Math.floor(score),W/2,H*0.455,Math.max(26,W*0.080),PAPER);
-      if(newBestThisRound)
-        ctext('\u2605 NEW BEST \u2605',W/2,H*0.535,Math.max(11,W*0.030),AMBER);
-      else
-        ctext('YOUR BEST  '+bestScore,W/2,H*0.535,Math.max(10,W*0.028),AMBER);
-      if(endTimer>1.3)ctext('TAP TO TUNE AGAIN',W/2,H*0.66,Math.max(9,W*0.025),'#6f6a60');
+      var finW=Math.floor(score);
+      ctext('SIGNAL RECEIVED',W/2,H*0.30,Math.max(16,W*0.048),GREEN);
+      ctext(String(finW),W/2,H*0.385,Math.max(26,W*0.080),PAPER);
+      ctext('TARGET '+TARGET_SCORE+'  \u2014  BEAT BY '+(finW-TARGET_SCORE),
+            W/2,H*0.452,Math.max(9,W*0.025),BLUE);
+      if(newBestThisRound){
+        ctext('\u2605 NEW BEST \u2605   '+bestScore,W/2,H*0.508,Math.max(11,W*0.030),AMBER);
+        if(prevBest>0) ctext('BEATEN BY '+(bestScore-prevBest)+'  (WAS '+prevBest+')',
+                             W/2,H*0.552,Math.max(8,W*0.022),'#8a8478');
+      }else{
+        ctext('YOUR BEST  '+bestScore,W/2,H*0.508,Math.max(11,W*0.030),AMBER);
+        ctext(bestScore-finW+' OFF YOUR BEST',W/2,H*0.552,Math.max(8,W*0.022),'#8a8478');
+      }
+      ctext('GREEN '+Math.round(greenPts)+'   AMBER '+Math.round(amberPts),
+            W/2,H*0.598,Math.max(8,W*0.022),'#6f6a60');
+      ctext('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.638,Math.max(8,W*0.022),'#5c5668');
+      if(endTimer>1.3)ctext('TAP TO TUNE AGAIN',W/2,H*0.70,Math.max(9,W*0.025),'#6f6a60');
     }
   }
   if(state===S_LOSE){
     x.fillStyle='rgba(8,7,10,'+Math.min(0.88,endTimer*1.1)+')';
     x.fillRect(0,0,W,H);
     if(endTimer>0.3){
-      ctext('SIGNAL LOST',W/2,H*0.34,Math.max(16,W*0.048),RED);
-      ctext(Math.floor(score)+' / '+TARGET_SCORE,W/2,H*0.428,Math.max(18,W*0.055),PAPER);
-      var short=TARGET_SCORE-Math.floor(score);
-      if(short>0)ctext(short+' SHORT',W/2,H*0.492,Math.max(10,W*0.027),AMBER);
-      if(newBestThisRound)
-        ctext('\u2605 NEW BEST \u2605',W/2,H*0.548,Math.max(11,W*0.030),AMBER);
-      else
-        ctext('YOUR BEST  '+bestScore,W/2,H*0.548,Math.max(10,W*0.028),AMBER);
-      ctext('SOMEONE WAS THERE.',W/2,H*0.612,Math.max(10,W*0.027),'#8a8478');
-      if(endTimer>1.3)ctext('TAP TO TRY AGAIN',W/2,H*0.69,Math.max(9,W*0.025),'#6f6a60');
+      var finL=Math.floor(score);
+      ctext('SIGNAL LOST',W/2,H*0.30,Math.max(16,W*0.048),RED);
+      ctext(finL+' / '+TARGET_SCORE,W/2,H*0.385,Math.max(18,W*0.055),PAPER);
+      ctext((TARGET_SCORE-finL)+' SHORT',W/2,H*0.448,Math.max(10,W*0.027),AMBER);
+      if(newBestThisRound){
+        ctext('\u2605 NEW BEST \u2605   '+bestScore,W/2,H*0.503,Math.max(11,W*0.030),AMBER);
+        if(prevBest>0) ctext('BEATEN BY '+(bestScore-prevBest)+'  (WAS '+prevBest+')',
+                             W/2,H*0.546,Math.max(8,W*0.022),'#8a8478');
+      }else{
+        ctext('YOUR BEST  '+bestScore,W/2,H*0.503,Math.max(11,W*0.030),AMBER);
+        ctext(bestScore-finL+' OFF YOUR BEST',W/2,H*0.546,Math.max(8,W*0.022),'#8a8478');
+      }
+      ctext('GREEN '+Math.round(greenPts)+'   AMBER '+Math.round(amberPts),
+            W/2,H*0.590,Math.max(8,W*0.022),'#6f6a60');
+      ctext('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.628,Math.max(8,W*0.022),'#5c5668');
+      ctext('SOMEONE WAS THERE.',W/2,H*0.674,Math.max(10,W*0.027),'#8a8478');
+      if(endTimer>1.3)ctext('TAP TO TRY AGAIN',W/2,H*0.734,Math.max(9,W*0.025),'#6f6a60');
     }
     noiseOverlay(0.55);
   }
-
   if(state===S_PLAY)noiseOverlay((1-prox)*(calm?0.45:0.82));
   if(counting)noiseOverlay(0.35);
   if(flash>0){
@@ -823,7 +826,6 @@ function draw(){
   }
 }
 
-/* ============ LOOP ============ */
 function frame(now){
   var dt=Math.min(0.05,(now-last)/1000);
   last=now;
