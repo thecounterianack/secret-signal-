@@ -12,6 +12,12 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 #scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.32) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
 #vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.85) 100%)}
 
+/* pause button - small, cornered, so it never fights the tuner drag */
+#pbtn{position:absolute;top:8px;right:8px;width:40px;height:32px;border:1px solid #3a3543;
+ background:rgba(13,11,16,.8);color:#f0b23c;font-family:inherit;font-size:13px;font-weight:bold;
+ letter-spacing:1px;display:none;z-index:16}
+#pbtn.on{display:block}
+
 #found{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:14px;background:rgba(6,5,8,.96);z-index:20;overflow-y:auto}
 #found.on{display:flex}
 #note{max-width:520px;width:100%;border:2px solid #4fd67a;background:#0b0f0c;padding:18px 16px;color:#d8d2c4;font-size:13.5px;line-height:1.62;margin:auto 0}
@@ -34,6 +40,7 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 <canvas id="c"></canvas>
 <div id="scan"></div>
 <div id="vig"></div>
+<button id="pbtn">&#10073;&#10073;</button>
 <div id="audiowarn">TAP ONCE MORE FOR SOUND</div>
 
 <div id="found">
@@ -68,12 +75,8 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 (function(){
 
 /* =======================================================
-   SECRET SIGNAL v4  --  WCIA 90.7 FM
+   SECRET SIGNAL v6  --  WCIA 90.7 FM
    The Counterfeit Ian Ackley Experience
-
-   v4: hidden message rewritten as a locked-in writer's
-   transmission, in the spirit of Kamaitachi no Yoru's
-   secret developer message, merged with WCIA lore.
 
    ===== ADDING YOUR SONG =====
    1. Upload your mp3 into the SAME folder as this file.
@@ -82,21 +85,62 @@ canvas{display:block;background:#0d0b10;touch-action:none}
    3. Commit.
 
    Example:  var SONG_FILE='reset-here.mp3';
+
+   NOTE: filenames are case sensitive on GitHub Pages.
+   This file expects lowercase song.mp3 - POLYBIUS expects
+   Song.mp3. Make them match if you share one audio file.
+
+   ===== PAUSE MODEL (v6) =====
+   This is a hold-the-target game, so a free pause would let a
+   player stop time, reposition the dial with no pressure, and
+   unpause already locked. That would break scoring outright.
+
+   Instead:
+     - Pausing is allowed and freezes everything.
+     - RESUMING plays a 3-2-1 countdown during which the signal
+       KEEPS MOVING and you score NOTHING. By the time control
+       returns, the target has drifted, so there is no free
+       repositioning and no exploit.
+     - The dial is hidden while paused so the target cannot be
+       studied at leisure.
+     - Auto-pauses on tab hide / window blur, which also stops
+       the timer and audio from desyncing when backgrounded.
+
+   ===== v5 SCORING (kept) =====
+     Amber (near) pays points. Green (locked) pays double plus a
+     precision bonus that only exists inside green. Amber tapers
+     to its outer edge; streak decays in amber, resets in red.
+
+   ===== v5 DIFFICULTY (kept) =====
+     Easy start via p*p curve, then a surge in the final 15s:
+     faster drift, more frequent and larger jumps, tighter lock.
+     Jump sides alternate with random bias; amplitude clamped so
+     the signal can never leave the dial (89.115..92.285 inside
+     87.5..93.9, 1.6 units of headroom each side).
    ======================================================= */
 
-var SONG_FILE='song.mp3'; 
+var SONG_FILE='song.mp3';
 var SONG_TITLE='RESET HERE';
 
 var FEED_URL='https://youtube.com/@x-ackley';
 
 var ROUND_TIME=90;
-var TARGET_SCORE=1500;
+var TARGET_SCORE=2600;
 
-var LOCK_WINDOW=0.055;
-var DRIFT_START=1.9;
-var DRIFT_ACCEL=0.062;
-var JUMP_MIN=6.5;
-var JUMP_MAX=11.0;
+/* zone half-widths in MHz */
+var LOCK_WINDOW=0.055;   /* green */
+var NEAR_WINDOW=0.22;    /* amber */
+
+/* scoring rates (per second, before streak multiplier) */
+var GREEN_BASE=26, GREEN_PREC=30, GREEN_MULT=2.0;
+var AMBER_BASE=11, AMBER_TAPER=9;
+
+/* difficulty envelope */
+var DRIFT_BASE=1.35, DRIFT_RANGE=2.10;
+var SURGE_SECS=15;
+
+/* pause / resume */
+var RESUME_COUNT=3.0;   /* seconds of 3-2-1 before control returns */
 
 var STATION='WCIA 90.7 FM';
 var TITLE='SECRET SIGNAL';
@@ -156,7 +200,8 @@ function initAudio(){
       trackEl=new Audio();
       trackEl.src=SONG_FILE;
       trackEl.loop=true;
-      trackEl.crossOrigin='anonymous';
+      /* NO crossOrigin here - setting it taints the media element
+         source and the graph outputs silence. */
       trackEl.preload='auto';
       try{
         var srcNode=AC.createMediaElementSource(trackEl);
@@ -187,7 +232,7 @@ function unlockAudio(){
     warnEl.classList.remove('on');
   }
   if(usingTrack&&trackEl&&trackEl.paused){
-    trackEl.play().catch(function(err){console.log('track:',err);});
+    trackEl.play().catch(function(){});
   }
 }
 function audioNudge(){ if(!audioLive)unlockAudio(); }
@@ -205,6 +250,16 @@ function setAudio(prox,clear){
     trackGain.gain.value=clear?0.85:(0.22+prox*0.42);
   }
 }
+/* muffle everything while paused without stopping the song */
+function setAudioPaused(){
+  if(!audioReady||!audioLive)return;
+  noiseGain.gain.value=0.02;
+  toneGain.gain.value=0.0001;
+  if(usingTrack&&trackLP&&trackGain){
+    trackLP.frequency.value=420;
+    trackGain.gain.value=0.14;
+  }
+}
 
 function blip(freq,dur,vol){
   if(!audioReady||!audioLive)return;
@@ -220,32 +275,100 @@ function blip(freq,dur,vol){
 }
 
 /* ============ STATE ============ */
-var S_BOOT=0,S_PLAY=1,S_WIN=2,S_LOSE=3;
+var S_BOOT=0,S_PLAY=1,S_WIN=2,S_LOSE=3,S_PAUSE=4,S_RESUME=5;
 var state=S_BOOT;
 var dial=88.2, base=90.7, driftPhase=0;
 var score=0, timeLeft=ROUND_TIME, streak=0, bestStreak=0;
 var dragging=false, lastTouchX=0;
 var bootTimer=0, flash=0, endTimer=0;
 var FMIN=87.5, FMAX=93.9;
-var driftSpeed=DRIFT_START;
-var jumpTimer=0, jumpOffset=0, jumpTarget=0;
+var driftSpeed=DRIFT_BASE;
+var jumpTimer=0, jumpOffset=0, jumpTarget=0, jumpSide=1;
 var padConnected=false;
+var diff=0, surge=0, lockWin=LOCK_WINDOW, surgeAnnounced=false;
+var resumeT=0, lastCountShown=-1;
+var pbtn=document.getElementById('pbtn');
 
 function startRound(){
   dial=FMIN+Math.random()*1.3;
   driftPhase=Math.random()*6.28;
   score=0;timeLeft=ROUND_TIME;streak=0;bestStreak=0;
-  driftSpeed=DRIFT_START;
-  jumpTimer=JUMP_MIN+Math.random()*(JUMP_MAX-JUMP_MIN);
+  driftSpeed=DRIFT_BASE;
+  diff=0;surge=0;lockWin=LOCK_WINDOW;surgeAnnounced=false;
+  jumpSide=(Math.random()<0.5?-1:1);
+  jumpTimer=nextJumpGap();
   jumpOffset=0;jumpTarget=0;
+  resumeT=0;lastCountShown=-1;
+  dragging=false;
   state=S_PLAY;
+  pbtn.classList.add('on');
 }
+
+/* jump cadence tightens as difficulty rises */
+function nextJumpGap(){
+  var lo=7.2-diff*3.6, hi=12.0-diff*6.0;
+  return lo+Math.random()*Math.max(0.6,hi-lo);
+}
+/* amplitude grows with difficulty; clamped so the signal stays on the dial */
+function jumpAmp(){ return 0.55+diff*0.70; }
+
 function signalFreq(){
   var wob=Math.sin(driftPhase)*0.19
          +Math.sin(driftPhase*2.4)*0.10
          +Math.sin(driftPhase*4.1)*0.045;
-  return base+wob+jumpOffset;
+  var f=base+wob+jumpOffset;
+  if(f<FMIN+0.5)f=FMIN+0.5;
+  if(f>FMAX-0.5)f=FMAX-0.5;
+  return f;
 }
+
+/* advance ONLY the signal, no scoring - used during the resume countdown
+   so the target keeps drifting and cannot be pre-aimed */
+function advanceSignal(dt){
+  driftPhase+=dt*driftSpeed;
+  jumpTimer-=dt;
+  if(jumpTimer<=0){
+    jumpSide=(Math.random()<0.75)?-jumpSide:jumpSide;
+    var amp=jumpAmp();
+    jumpTarget=jumpSide*(amp*(0.45+Math.random()*0.55));
+    jumpTimer=nextJumpGap();
+  }
+  var ease=Math.min(1,dt*(2.6+diff*1.8));
+  jumpOffset+=(jumpTarget-jumpOffset)*ease;
+}
+
+/* ============ PAUSE / RESUME ============ */
+function pauseGame(){
+  if(state!==S_PLAY&&state!==S_RESUME)return;
+  state=S_PAUSE;
+  dragging=false;
+  streak=0;                 /* no banking a streak across a pause */
+  pbtn.classList.remove('on');
+  setAudioPaused();
+  blip(300,0.12,0.12);
+}
+function beginResume(){
+  if(state!==S_PAUSE)return;
+  state=S_RESUME;
+  resumeT=RESUME_COUNT;
+  lastCountShown=-1;
+  dragging=false;
+  pbtn.classList.add('on');
+}
+function togglePause(){
+  if(state===S_PLAY||state===S_RESUME)pauseGame();
+  else if(state===S_PAUSE)beginResume();
+}
+pbtn.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();togglePause();});
+pbtn.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();togglePause();},{passive:false});
+
+/* auto-pause: tab hidden or window blurred */
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden&&(state===S_PLAY||state===S_RESUME))pauseGame();
+});
+window.addEventListener('blur',function(){
+  if(state===S_PLAY||state===S_RESUME)pauseGame();
+});
 
 /* ============ FOUND OVERLAY ============ */
 var foundEl=document.getElementById('found');
@@ -268,6 +391,7 @@ function clampDial(){
 }
 function pressAction(){
   if(state===S_BOOT){startRound();blip(660,0.08);return true;}
+  if(state===S_PAUSE){beginResume();blip(520,0.07);return true;}
   if(state===S_WIN||state===S_LOSE){
     if(endTimer>1.1){startRound();blip(520,0.07);}
     return true;
@@ -278,10 +402,12 @@ function down(e){
   e.preventDefault();
   unlockAudio();
   if(pressAction())return;
+  if(state!==S_PLAY)return;      /* no dragging during the countdown */
   dragging=true;lastTouchX=px(e);
 }
 function move(e){
   if(!dragging)return;
+  if(state!==S_PLAY){dragging=false;return;}
   e.preventDefault();
   var p=px(e), dx=p-lastTouchX;
   lastTouchX=p;
@@ -297,6 +423,10 @@ window.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
 window.addEventListener('keydown',function(e){
   unlockAudio();
+  if(e.key==='p'||e.key==='P'||e.key==='Escape'){
+    if(state===S_PLAY||state===S_RESUME||state===S_PAUSE){e.preventDefault();togglePause();}
+    return;
+  }
   if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
     if(state===S_PLAY){
       dial+=(e.key==='ArrowLeft'?-0.035:0.035);
@@ -308,7 +438,7 @@ window.addEventListener('keydown',function(e){
 });
 
 /* ============ INPUT: GAMEPAD ============ */
-var padPrevPress=false;
+var padPrevPress=false,padStartPrev=false;
 window.addEventListener('gamepadconnected',function(){padConnected=true;});
 window.addEventListener('gamepaddisconnected',function(){padConnected=false;});
 
@@ -319,23 +449,31 @@ function pollPad(dt){
   for(var i=0;i<pads.length;i++){ if(pads[i]){gp=pads[i];break;} }
   if(!gp){padConnected=false;return;}
   padConnected=true;
+  function btn(n){return !!(gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed);}
 
-  var ax=gp.axes&&gp.axes.length>0?gp.axes[0]:0;
-  if(Math.abs(ax)>0.14){
-    var curve=(Math.abs(ax)-0.14)/0.86;
-    dial+=(ax<0?-1:1)*curve*curve*2.4*dt;
-    clampDial();
-  }
-  var ax2=gp.axes&&gp.axes.length>2?gp.axes[2]:0;
-  if(Math.abs(ax2)>0.14){
-    dial+=(ax2<0?-1:1)*0.55*dt;
-    clampDial();
-  }
-  function btn(n){return gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed;}
-  if(btn(14)){dial-=1.15*dt;clampDial();}
-  if(btn(15)){dial+=1.15*dt;clampDial();}
+  /* START toggles pause mid-round */
+  var ps=btn(9);
+  if(ps&&!padStartPrev&&(state===S_PLAY||state===S_RESUME||state===S_PAUSE))togglePause();
+  padStartPrev=ps;
 
-  var pressed=btn(0)||btn(1)||btn(9)||btn(8);
+  /* dial only moves in true play, never on menus or the countdown */
+  if(state===S_PLAY){
+    var ax=gp.axes&&gp.axes.length>0?gp.axes[0]:0;
+    if(Math.abs(ax)>0.14){
+      var curve=(Math.abs(ax)-0.14)/0.86;
+      dial+=(ax<0?-1:1)*curve*curve*2.4*dt;
+      clampDial();
+    }
+    var ax2=gp.axes&&gp.axes.length>2?gp.axes[2]:0;
+    if(Math.abs(ax2)>0.14){
+      dial+=(ax2<0?-1:1)*0.55*dt;
+      clampDial();
+    }
+    if(btn(14)){dial-=1.15*dt;clampDial();}
+    if(btn(15)){dial+=1.15*dt;clampDial();}
+  }
+
+  var pressed=btn(0)||btn(1)||btn(8);
   if(pressed&&!padPrevPress){
     unlockAudio();
     pressAction();
@@ -353,36 +491,65 @@ function update(dt){
   if(state===S_WIN){endTimer+=dt;setAudio(1,true);return;}
   if(state===S_LOSE){endTimer+=dt;setAudio(0.15,false);return;}
 
+  if(state===S_PAUSE){setAudioPaused();return;}
+
+  if(state===S_RESUME){
+    /* signal keeps drifting, clock and score are frozen */
+    advanceSignal(dt);
+    resumeT-=dt;
+    var cn=Math.ceil(resumeT);
+    if(cn!==lastCountShown&&cn>0){lastCountShown=cn;blip(440,0.09,0.13);}
+    var tgtR=signalFreq();
+    var proxR=Math.max(0,1-Math.abs(dial-tgtR)/0.80);
+    setAudio(proxR*0.5,false);
+    if(resumeT<=0){state=S_PLAY;blip(720,0.10,0.15);}
+    return;
+  }
+
   if(state===S_PLAY){
     timeLeft-=dt;
-    driftSpeed+=dt*DRIFT_ACCEL;
-    driftPhase+=dt*driftSpeed;
+    if(timeLeft<0)timeLeft=0;
 
-    jumpTimer-=dt;
-    if(jumpTimer<=0){
-      jumpTarget=(Math.random()*2-1)*0.85;
-      jumpTimer=JUMP_MIN+Math.random()*(JUMP_MAX-JUMP_MIN);
-      blip(240,0.06,0.07);
+    /* ---- difficulty envelope: easy start, hard finish ---- */
+    var elapsed=ROUND_TIME-timeLeft;
+    var pp=elapsed/ROUND_TIME;
+    surge=(timeLeft>SURGE_SECS)?0:(1-timeLeft/SURGE_SECS);
+    diff=Math.min(1,pp*pp*0.75+surge*0.55);
+
+    if(surge>0&&!surgeAnnounced){
+      surgeAnnounced=true;
+      blip(300,0.18,0.13);
+      setTimeout(function(){blip(240,0.22,0.12);},170);
     }
-    jumpOffset+=(jumpTarget-jumpOffset)*Math.min(1,dt*2.6);
+
+    driftSpeed=DRIFT_BASE+diff*DRIFT_RANGE;
+    lockWin=LOCK_WINDOW*(1-diff*0.22);
+
+    advanceSignal(dt);
 
     var tgt=signalFreq();
     var dist=Math.abs(dial-tgt);
     var prox=Math.max(0,1-dist/0.80);
     setAudio(prox,false);
 
-    if(dist<LOCK_WINDOW){
+    /* ---- scoring: amber pays, green pays double ---- */
+    if(dist<lockWin){
       streak+=dt;
       if(streak>bestStreak)bestStreak=streak;
-      var precision=1-(dist/LOCK_WINDOW);
+      var precision=1-(dist/lockWin);
       var streakBonus=1+Math.min(1.8,streak*0.30);
-      score+=dt*(70+precision*80)*streakBonus;
+      score+=dt*(GREEN_BASE+precision*GREEN_PREC)*GREEN_MULT*streakBonus;
+    }else if(dist<NEAR_WINDOW){
+      streak=Math.max(0,streak-dt*0.5);
+      var taper=1-(dist-lockWin)/Math.max(0.001,NEAR_WINDOW-lockWin);
+      var sb2=1+Math.min(1.8,streak*0.30);
+      score+=dt*(AMBER_BASE+taper*AMBER_TAPER)*sb2;
     }else{
       streak=0;
     }
 
     if(timeLeft<=0){
-      timeLeft=0;
+      pbtn.classList.remove('on');
       if(score>=TARGET_SCORE){
         state=S_WIN;endTimer=0;flash=1;
         blip(720,0.14,0.16);
@@ -423,25 +590,30 @@ function draw(){
 
   if(state===S_BOOT){
     var pulse=0.55+Math.sin(bootTimer*3)*0.45;
-    ctext('SOMEONE IS TRANSMITTING FROM INSIDE.',W/2,H*0.34,Math.max(10,W*0.027),PAPER);
-    ctext('IT MOVES. IT JUMPS. HOLD IT ANYWAY.',W/2,H*0.40,Math.max(10,W*0.027),'#8a8478');
-    ctext(ROUND_TIME+' SECONDS.  '+TARGET_SCORE+' TO RECEIVE.',W/2,H*0.46,Math.max(10,W*0.027),BLUE);
+    ctext('SOMEONE IS TRANSMITTING FROM INSIDE.',W/2,H*0.32,Math.max(10,W*0.027),PAPER);
+    ctext('IT MOVES. IT JUMPS. HOLD IT ANYWAY.',W/2,H*0.375,Math.max(10,W*0.027),'#8a8478');
+    ctext('NEAR SCORES. LOCKED SCORES DOUBLE.',W/2,H*0.43,Math.max(10,W*0.027),AMBER);
+    ctext(ROUND_TIME+' SECONDS.  '+TARGET_SCORE+' TO RECEIVE.',W/2,H*0.485,Math.max(10,W*0.027),BLUE);
     x.globalAlpha=pulse;
-    ctext('TAP TO POWER ON',W/2,H*0.60,Math.max(13,W*0.040),GREEN);
+    ctext('TAP TO POWER ON',W/2,H*0.61,Math.max(13,W*0.040),GREEN);
     x.globalAlpha=1;
-    ctext(padConnected?'CONTROLLER DETECTED':'DRAG, ARROWS OR STICK',W/2,H*0.71,
+    ctext(padConnected?'CONTROLLER DETECTED':'DRAG, ARROWS OR STICK',W/2,H*0.72,
           Math.max(8,W*0.022),padConnected?GREEN:'#4a4640');
     if(SONG_FILE)ctext(SONG_TITLE,W/2,H*0.82,Math.max(8,W*0.021),'#4a4640');
     noiseOverlay(0.5);
     return;
   }
 
+  var paused=(state===S_PAUSE);
+  var counting=(state===S_RESUME);
+
   var tgt=signalFreq();
   var dist=Math.abs(dial-tgt);
   var prox=Math.max(0,1-dist/0.80);
-  var locked=(dist<LOCK_WINDOW);
+  var locked=(dist<lockWin);
+  var near=(!locked&&dist<NEAR_WINDOW);
 
-  var tcol=(timeLeft<15)?RED:PAPER;
+  var tcol=(timeLeft<SURGE_SECS)?RED:PAPER;
   ctext('TIME',W*0.10,H*0.165,Math.max(8,W*0.021),'#6f6a60','left');
   ctext(timeLeft.toFixed(1),W*0.10,H*0.205,Math.max(16,W*0.050),tcol,'left');
   ctext('SCORE',W*0.90,H*0.165,Math.max(8,W*0.021),'#6f6a60','right');
@@ -458,6 +630,19 @@ function draw(){
   var tx0=W*0.09, tw=W*0.82;
 
   x.fillStyle='#141119';x.fillRect(tx0,trackY,tw,trackH);
+
+  /* while paused the dial and target are hidden so the player
+     cannot study the signal position at leisure */
+  if(!paused){
+    var tgp=(tgt-FMIN)/(FMAX-FMIN), tgx=tx0+tgp*tw;
+    var nearPx=(NEAR_WINDOW/(FMAX-FMIN))*tw;
+    var lockPx=(lockWin/(FMAX-FMIN))*tw;
+    x.fillStyle='rgba(240,178,60,0.10)';
+    x.fillRect(tgx-nearPx,trackY,nearPx*2,trackH);
+    x.fillStyle='rgba(79,214,122,0.16)';
+    x.fillRect(tgx-lockPx,trackY,lockPx*2,trackH);
+  }
+
   x.strokeStyle='#2a2533';x.lineWidth=2;x.strokeRect(tx0,trackY,tw,trackH);
 
   for(var f=88;f<=93.5;f+=0.5){
@@ -477,39 +662,77 @@ function draw(){
     }
   }
 
-  var tgp=(tgt-FMIN)/(FMAX-FMIN), tgx=tx0+tgp*tw;
-  if(prox>0.15){
+  if(!paused&&prox>0.15){
+    var tgp2=(tgt-FMIN)/(FMAX-FMIN), tgx2=tx0+tgp2*tw;
     x.globalAlpha=Math.min(1,(prox-0.15)*1.5);
-    var grd=x.createLinearGradient(tgx-22,0,tgx+22,0);
+    var grd=x.createLinearGradient(tgx2-22,0,tgx2+22,0);
     grd.addColorStop(0,'rgba(90,169,240,0)');
     grd.addColorStop(0.5,'rgba(90,169,240,0.55)');
     grd.addColorStop(1,'rgba(90,169,240,0)');
-    x.fillStyle=grd;x.fillRect(tgx-22,trackY,44,trackH);
+    x.fillStyle=grd;x.fillRect(tgx2-22,trackY,44,trackH);
     x.globalAlpha=1;
   }
 
-  var dp=(dial-FMIN)/(FMAX-FMIN), dx2=tx0+dp*tw;
-  var lockCol=locked?GREEN:(prox>0.55?AMBER:RED);
-  x.fillStyle=lockCol;
-  x.fillRect(dx2-2,trackY-9,4,trackH+18);
-  x.beginPath();
-  x.moveTo(dx2,trackY-13);x.lineTo(dx2-7,trackY-22);x.lineTo(dx2+7,trackY-22);
-  x.closePath();x.fill();
+  var lockCol=paused?'#4a4640':(locked?GREEN:(near?AMBER:RED));
+  if(!paused){
+    var dp=(dial-FMIN)/(FMAX-FMIN), dx2=tx0+dp*tw;
+    x.fillStyle=lockCol;
+    x.fillRect(dx2-2,trackY-9,4,trackH+18);
+    x.beginPath();
+    x.moveTo(dx2,trackY-13);x.lineTo(dx2-7,trackY-22);x.lineTo(dx2+7,trackY-22);
+    x.closePath();x.fill();
+  }
 
-  ctext(dial.toFixed(1),W/2,H*0.305,Math.max(22,W*0.070),lockCol);
+  ctext(paused?'--.-':dial.toFixed(1),W/2,H*0.305,Math.max(22,W*0.070),lockCol);
 
   var bw=W*0.62, bx=W/2-bw/2, by=H*0.535, bh=H*0.020;
   x.fillStyle='#181420';x.fillRect(bx,by,bw,bh);
-  x.fillStyle=lockCol;x.fillRect(bx,by,bw*prox,bh);
+  if(!paused){x.fillStyle=lockCol;x.fillRect(bx,by,bw*prox,bh);}
   x.strokeStyle='#302b3a';x.lineWidth=1;x.strokeRect(bx,by,bw,bh);
   ctext('SIGNAL',bx,by-H*0.024,Math.max(8,W*0.021),'#6f6a60','left');
 
-  if(streak>0.4){
-    ctext('LOCKED  '+streak.toFixed(1)+'s',W/2,H*0.60,Math.max(10,W*0.028),GREEN);
-  }else if(state===S_PLAY){
-    ctext(padConnected?'STICK OR DPAD TO TUNE':'DRAG TO TUNE',W/2,H*0.60,Math.max(9,W*0.025),'#4a4640');
+  if(state===S_PLAY){
+    if(locked){
+      ctext('LOCKED  x2'+(streak>0.4?('  '+streak.toFixed(1)+'s'):''),
+            W/2,H*0.60,Math.max(10,W*0.028),GREEN);
+    }else if(near){
+      ctext('NEAR  SCORING',W/2,H*0.60,Math.max(10,W*0.028),AMBER);
+    }else{
+      ctext(padConnected?'STICK OR DPAD TO TUNE':'DRAG TO TUNE',
+            W/2,H*0.60,Math.max(9,W*0.025),'#4a4640');
+    }
   }
   ctext('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.655,Math.max(8,W*0.021),'#5c5668');
+
+  /* surge warning in the closing stretch */
+  if(state===S_PLAY&&surge>0){
+    var sp=0.5+Math.sin(performance.now()/140)*0.5;
+    x.globalAlpha=0.45+sp*0.55;
+    ctext('HE IS MOVING THE SIGNAL',W/2,H*0.705,Math.max(9,W*0.025),RED);
+    x.globalAlpha=1;
+  }
+
+  /* ---- resume countdown: signal is live, control is not ---- */
+  if(counting){
+    x.fillStyle='rgba(8,7,10,0.55)';x.fillRect(0,0,W,H);
+    var cn=Math.max(1,Math.ceil(resumeT));
+    ctext(String(cn),W/2,H*0.42,Math.max(54,W*0.20),AMBER);
+    ctext('THE SIGNAL IS STILL MOVING',W/2,H*0.53,Math.max(10,W*0.027),PAPER);
+    ctext('NO SCORING UNTIL ZERO',W/2,H*0.575,Math.max(9,W*0.024),'#8a8478');
+  }
+
+  /* ---- pause overlay ---- */
+  if(paused){
+    x.fillStyle='rgba(8,7,10,0.86)';x.fillRect(0,0,W,H);
+    ctext('PAUSED',W/2,H*0.36,Math.max(18,W*0.055),AMBER);
+    ctext('SCORE  '+Math.floor(score),W/2,H*0.45,Math.max(11,W*0.030),PAPER);
+    ctext('TIME LEFT  '+timeLeft.toFixed(1)+'s',W/2,H*0.495,Math.max(11,W*0.030),PAPER);
+    ctext('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.54,Math.max(9,W*0.024),'#8a8478');
+    ctext('DIAL HIDDEN WHILE PAUSED',W/2,H*0.60,Math.max(9,W*0.024),'#6f6a60');
+    ctext('TAP TO RESUME',W/2,H*0.67,Math.max(13,W*0.038),GREEN);
+    ctext('A '+RESUME_COUNT.toFixed(0)+' SECOND COUNT FOLLOWS',W/2,H*0.72,Math.max(8,W*0.022),'#5c5668');
+    ctext('P OR ESC  \u2014  PAD START',W/2,H*0.77,Math.max(8,W*0.021),'#4a4640');
+  }
 
   if(state===S_WIN){
     x.fillStyle='rgba(8,7,10,'+Math.min(0.90,endTimer*1.1)+')';
@@ -533,6 +756,7 @@ function draw(){
   }
 
   if(state===S_PLAY)noiseOverlay((1-prox)*0.82);
+  if(counting)noiseOverlay(0.35);
   if(flash>0){
     x.fillStyle='rgba(255,255,255,'+(flash*0.32)+')';
     x.fillRect(0,0,W,H);
