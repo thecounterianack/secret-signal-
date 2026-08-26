@@ -8,55 +8,49 @@
 <title>SECRET SIGNAL — WCIA 90.7 FM</title>
 <!--
 ======================================================================
-SECRET SIGNAL v14 — WCIA 90.7 FM
+SECRET SIGNAL v15 — WCIA 90.7 FM
 The Counterfeit Ian Ackley Experience
 
 Put your song next to this file. Any of these names works:
   song.mp3   Song.mp3   SONG.mp3
 
-WHAT CHANGED FROM v13
-A. SCORING REBALANCE — target stays 1983, but points come faster in
-   both the amber and green zones so ordinary players reach the
-   transmission and the feed link. Simulated over the real signal
-   model, 40 seeded rounds per profile:
-     flailing 2252 (unlock ~73s) | casual 2793 (~57s)
-     average  3968 (~37s)        | skilled 7199 (~21s)
-   All four profiles unlock in 100% of rounds. Under v13 the casual
-   and flailing profiles finished around 1660-1797 and NEVER unlocked.
-B. BALANCE INVERSION FIXED — v13's header claimed amber could never
-   out-earn a real lock. It could: amber peaked at 20/s while green's
-   floor was 14/s, so hovering just outside the lock window paid
-   better than barely holding it. Invariant now enforced:
-     AMBER_BASE + AMBER_TAPER  <=  GREEN_BASE * GREEN_MULT   (25 <= 26)
-     AMBER_STREAK_CAP          <=  STREAK_CAP                (0.8 <= 2.2)
-C. MERCY UNLOCK — at or above MERCY_SCORE the message and the feed
-   link still arrive on a technical loss, labelled as a partial lock.
-   Nobody should ever play and miss the payoff.
-D. Win note could land on top of a restarted round. endRound's
-   setTimeout is now tracked in foundTimer, cleared by startRound, and
-   showFound bails if the state moved on.
-E. Pause button hid itself while paused. It stays visible and shows a
-   play glyph.
-F. Any key acted as start/restart (Tab, F5, held keys). Now Space and
-   Enter only, with repeat and modifier guards.
-G. SND and PAUSE were pointer-only; preventDefault killed the click,
-   so Enter and Space did nothing. Both are keyboard operable now.
-H. Tapping SND during the very first gesture let the unlock promise
-   overwrite CARRIER: MUTED. It re-checks soundOn before reporting.
-I. Muting after all three song names failed stranded songIndex past
-   the end of the list, so the mp3 never got another chance.
-J. iOS 'interrupted' contexts were never observed, so CARRIER kept
-   claiming TAPE while nothing played. statechange is watched now.
-K. Pause left the raw <audio> element at full volume on browsers where
-   createMediaElementSource yields silence.
-L. Controls were pinned to the viewport, drifting off the letterboxed
-   canvas. resize() aligns them to the frame.
-M. synthMix was declared below its first use; the warn banner ate
-   drags along the bottom edge; a failed audio init leaked a context.
+WHAT CHANGED FROM v14 — three things, nothing else touched
+1. CONTROLLER RUNAWAY AT START — FIXED
+   v14 read gp.axes[2] as a second tuning input and assumed every axis
+   rests at 0. On many controllers axis 2 is a TRIGGER whose resting
+   value is -1.0, which clears the 0.14 dead zone on the first frame
+   and pushes the dial at a constant rate until it pins against the
+   end of the band. Some pads also report garbage axis data until the
+   first real input. v15 calibrates instead of assuming:
+     - every axis is sampled for PAD_WARM seconds after connect and at
+       the start of each round; that reading becomes its true center
+     - any axis whose rest sits beyond +/-0.5 is ignored for good
+       (covers trigger axes and a stick held at an extreme)
+     - an axis must be seen near its own center once before it can tune
+     - per-frame dial movement is clamped, so no frame can jump it
+2. CONTROLLER START DELAY — FIXED
+   v13/v14 refused to let a pad button start the round, because a
+   gamepad press is not a user gesture browsers accept for unlocking
+   audio, so it only showed a prompt. That refusal was the delay. A
+   now starts the round immediately and a banner asks for one tap or
+   keypress for sound, which clears itself as soon as audio unlocks.
+3. LOSING STILL DELIVERS THE MESSAGE AND THE LINK
+   MERCY_SCORE is gone. Every ended round opens the transmission:
+   RECEIVED WITH n at or above 1983, PARTIAL LOCK below it, always
+   with score, green/amber split and best hold. Tapping to retry in
+   the first 1.2 s cancels it, so a fast replay still works.
+   The note now carries three real controls in order:
+     TUNE AGAIN  /  OPEN THE FEED  /  KEEP LISTENING
+   D-pad up/down or the left stick moves an amber focus ring, A
+   activates, B closes. Arrows and Tab do the same. A programmatic
+   click from the pad poll is not a user gesture, so target=_blank
+   would be popup-blocked: opened by controller the feed navigates
+   this tab, opened by tap or key it still opens a new tab.
 
-UNCHANGED: 90 s round, target 1983, lock 0.055, near 0.22, 5 rest
-windows of 4 s from 7.0 s to 74.0 s, surge in the last 15 s, 3 s
-no-scoring count after a pause.
+UNCHANGED: 90 s round, target 1983, lock 0.055, near 0.22, the v14
+scoring rates, 5 rest windows of 4 s from 7.0 s to 74.0 s, surge in
+the last 15 s, 3 s no-scoring count after a pause, the whole audio
+chain, and every v14 bug fix.
 ======================================================================
 -->
 <style>
@@ -81,8 +75,14 @@ canvas{display:block;background:#0d0b10;touch-action:none}
 #note hr{border:none;border-top:1px solid #223026;margin:14px 0}
 .warnTxt{color:#e0464a}.stn{color:#f0b23c}.whisper{color:#8a8478;font-size:12.5px}
 #noteScore{margin-bottom:12px;padding:8px;border:1px solid #223026;color:#4fd67a;text-align:center;font-weight:bold;letter-spacing:1px;line-height:1.7}
-#feed{display:block;margin:15px 0 8px;padding:13px 10px;border:0;background:#4fd67a;color:#06120a;text-align:center;font-weight:bold;font-size:14px;text-decoration:none;letter-spacing:1px}
-#closeb{display:block;width:100%;margin-top:6px;padding:10px;border:1px solid #3a3543;background:transparent;color:#6f6a60;font:12px "Courier New",monospace;letter-spacing:1px;cursor:pointer}
+#again{display:block;width:100%;margin:15px 0 0;padding:13px 10px;border:2px solid #f0b23c;background:#141119;color:#f0b23c;text-align:center;font:bold 14px "Courier New",monospace;letter-spacing:1px;cursor:pointer}
+#feed{display:block;margin:8px 0 0;padding:13px 10px;border:2px solid transparent;background:#4fd67a;color:#06120a;text-align:center;font-weight:bold;font-size:14px;text-decoration:none;letter-spacing:1px}
+#closeb{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #3a3543;background:transparent;color:#6f6a60;font:12px "Courier New",monospace;letter-spacing:1px;cursor:pointer}
+/* focus ring must be visible for controller and keyboard alike */
+#note a:focus,#note button:focus{outline:3px solid #f0b23c;outline-offset:3px}
+#note a.sel,#note button.sel{outline:3px solid #f0b23c;outline-offset:3px}
+#padhint{margin-top:12px;color:#4a4640;font-size:11px;text-align:center;letter-spacing:1px;display:none}
+#padhint.on{display:block}
 </style>
 </head>
 <body>
@@ -104,8 +104,10 @@ canvas{display:block;background:#0d0b10;touch-action:none}
   <p class="warnTxt">Be careful. I think he plans to take over the city. He's gone mad, I tell you.</p>
   <p>And he knows about this frequency now. He knows somebody has been listening.</p>
   <p>You can see a constant video feed of him here:</p>
+  <button id="again">↺ TUNE AGAIN</button>
   <a id="feed" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">▶ OPEN THE FEED</a>
   <button id="closeb">KEEP LISTENING</button>
+  <div id="padhint">D-PAD OR STICK TO MOVE  —  A SELECT  —  B CLOSE</div>
 </div></div>
 </div>
 <script>
@@ -118,29 +120,38 @@ const SONG_TITLE='RESET HERE';
 const FEED_URL='https://youtube.com/@x-ackley';
 const STATION='WCIA 90.7 FM',TITLE='SECRET SIGNAL';
 const ROUND_TIME=90,TARGET_SCORE=1983;
-const MERCY_SCORE=1400;
 const LOCK_WINDOW=0.055,NEAR_WINDOW=0.22;
 
-/* REBALANCED — see note A/B in the header.
-   green floor 26/s, green peak 56/s, green peak with max streak 179/s
-   amber floor 15/s, amber peak 25/s, amber peak with max streak 45/s */
+/* scoring rates unchanged from v14
+   green floor 26/s, peak 56/s, peak with max streak 179/s
+   amber floor 15/s, peak 25/s, peak with max streak 45/s
+   invariant: AMBER_BASE+AMBER_TAPER <= GREEN_BASE*GREEN_MULT (25<=26)
+              AMBER_STREAK_CAP      <= STREAK_CAP             (0.8<=2.2) */
 const GREEN_BASE=13,GREEN_PREC=15,GREEN_MULT=2.0;
 const AMBER_BASE=15,AMBER_TAPER=10.0;
 const STREAK_RATE=0.35,STREAK_CAP=2.2,AMBER_STREAK_CAP=0.8;
 
 const DRIFT_BASE=1.35,DRIFT_RANGE=2.10,SURGE_SECS=15;
 const CALM_COUNT=5,CALM_DUR=4.0,CALM_FIRST=7.0,CALM_LAST_END=74.0,CALM_EASE=2.4;
-const RESUME_COUNT=3.0,PAD_PROMPT_SECS=10;
+const RESUME_COUNT=3.0;
 const FMIN=87.5,FMAX=93.9,BASE_FREQ=90.7;
-const RED='#e0464a',GREEN='#4fd67a',BLUE='#5aa9f0',AMBER='#f0b23c',PAPER='#d8d2c4',DIM='#6f6a60';
 
+/* controller */
+const PAD_WARM=0.6;        /* seconds of axis calibration before tuning */
+const AX_DEAD=0.14;        /* dead zone applied AFTER center correction */
+const AX_REST_MAX=0.5;     /* axis resting past this is a trigger: ignore */
+const DIAL_STEP_MAX=0.06;  /* MHz a single frame may move the dial */
+const NAV_REPEAT=0.22;     /* menu cursor repeat delay */
+
+const RED='#e0464a',GREEN='#4fd67a',BLUE='#5aa9f0',AMBER='#f0b23c',PAPER='#d8d2c4',DIM='#6f6a60';
 const S_BOOT=0,S_PLAY=1,S_WIN=2,S_LOSE=3,S_PAUSE=4,S_RESUME=5;
 
 /* ---------------- DOM ---------------- */
 const $=id=>document.getElementById(id);
 const c=$('c'),x=c.getContext('2d',{alpha:false});
 const pbtn=$('pbtn'),sbtn=$('sbtn'),warnEl=$('warn'),foundEl=$('found'),noteScoreEl=$('noteScore');
-$('feed').href=FEED_URL;
+const againEl=$('again'),feedEl=$('feed'),closeEl=$('closeb'),padHintEl=$('padhint');
+feedEl.href=FEED_URL;
 
 let W=0,H=0,DPR=1;
 function alignControls(){
@@ -173,8 +184,10 @@ let greenPts=0,amberPts=0,rate=0;
 let diff=0,surge=0,lockWin=LOCK_WINDOW,surgeAnnounced=false;
 let calmStarts=[],calmIdx=-1,calmLeft=0,calmPark=0;
 let bootTimer=0,endTimer=0,flash=0,resumeT=0,lastCount=-1;
-let dragging=false,lastTouchX=0,padConnected=false,padTriedStart=false,padPromptT=0;
+let dragging=false,lastTouchX=0,padConnected=false;
 let foundTimer=0;
+/* controller calibration + menu cursor */
+let padWarm=PAD_WARM,axRest=[],axArmed=[],navT=0,focusIdx=0;
 try{best=parseInt(localStorage.getItem('ss_best')||'0',10)||0}catch(e){}
 function saveBest(){try{localStorage.setItem('ss_best',String(best))}catch(e){}}
 
@@ -370,6 +383,39 @@ function toggleSound(){
   }
 }
 
+/* ---------------- NOTE MENU (pointer, keyboard and controller) ---- */
+function navList(){return [againEl,feedEl,closeEl]}
+function paintFocus(){
+  const list=navList();
+  for(let i=0;i<list.length;i++)list[i].classList.toggle('sel',i===focusIdx);
+}
+function setFocus(i){
+  const list=navList();
+  focusIdx=(i+list.length)%list.length;
+  paintFocus();
+  try{list[focusIdx].focus({preventScroll:false})}catch(e){try{list[focusIdx].focus()}catch(e2){}}
+}
+function navMove(d){setFocus(focusIdx+d);blip(600,0.05,0.10)}
+function activateFocused(fromPad){
+  const el=navList()[focusIdx];
+  if(!el)return;
+  if(el===feedEl){
+    /* a pad poll is not a user gesture, so target=_blank gets blocked.
+       Controller opens the feed in this tab instead. */
+    if(fromPad)location.href=FEED_URL;
+    else el.click();
+    return;
+  }
+  el.click();
+}
+function closeNote(){foundEl.classList.remove('on');padHintEl.classList.remove('on')}
+againEl.addEventListener('click',e=>{e.stopPropagation();startRound()});
+closeEl.addEventListener('click',e=>{e.stopPropagation();closeNote()});
+navList().forEach((el,i)=>{
+  el.addEventListener('pointerenter',()=>{focusIdx=i;paintFocus()});
+  el.addEventListener('focus',()=>{focusIdx=i;paintFocus()});
+});
+
 /* ---------------- ROUND ---------------- */
 function buildCalm(){
   calmStarts=[];
@@ -385,18 +431,21 @@ function signalFreq(){
   const wob=Math.sin(driftPhase)*0.19+Math.sin(driftPhase*2.4)*0.10+Math.sin(driftPhase*4.1)*0.045;
   return Math.max(FMIN+0.5,Math.min(FMAX-0.5,BASE_FREQ+wob+jump));
 }
+function recalibratePad(){padWarm=PAD_WARM;axRest=[];axArmed=[]}
 function startRound(){
   clearTimeout(foundTimer);
-  foundEl.classList.remove('on');
+  closeNote();
+  recalibratePad();
   dial=FMIN+Math.random()*1.3;driftPhase=Math.random()*6.28;
   score=0;timeLeft=ROUND_TIME;streak=0;bestStreak=0;rate=0;greenPts=0;amberPts=0;
   diff=0;surge=0;lockWin=LOCK_WINDOW;surgeAnnounced=false;
   jumpSide=Math.random()<0.5?-1:1;jumpTimer=nextJumpGap();jump=0;jumpTarget=0;
   resumeT=0;lastCount=-1;dragging=false;
   buildCalm();calmIdx=-1;calmLeft=0;calmPark=0;
-  newBest=false;prevBest=best;padTriedStart=false;padPromptT=0;
+  newBest=false;prevBest=best;
   state=S_PLAY;pbtn.classList.add('on');pbtn.textContent='ⅠⅠ';
   pbtn.setAttribute('aria-label','Pause');
+  if(!audioLive&&soundOn)say('SOUND NEEDS ONE SCREEN TAP OR KEY');
 }
 function calmActive(){return calmLeft>0}
 function checkCalm(){
@@ -436,6 +485,7 @@ function pauseGame(){
 function beginResume(){
   if(state!==S_PAUSE)return;
   state=S_RESUME;resumeT=RESUME_COUNT;lastCount=-1;dragging=false;
+  recalibratePad();
   pbtn.classList.add('on');pbtn.textContent='ⅠⅠ';
   pbtn.setAttribute('aria-label','Pause');
   nudge();
@@ -453,7 +503,7 @@ function endRound(){
     foundTimer=setTimeout(showFound,1600);
   }else{
     state=S_LOSE;endTimer=0;blip(180,0.4,0.12);
-    if(fin>=MERCY_SCORE)foundTimer=setTimeout(showFound,2200);
+    foundTimer=setTimeout(showFound,2200);   /* the link always arrives */
   }
 }
 function showFound(){
@@ -468,6 +518,9 @@ function showFound(){
   noteScoreEl.style.color=won?GREEN:AMBER;
   noteScoreEl.style.borderColor=won?'#223026':'#3a3626';
   foundEl.classList.add('on');
+  if(padConnected)padHintEl.classList.add('on');
+  navT=NAV_REPEAT;
+  setFocus(0);
 }
 
 /* ---------------- INPUT ---------------- */
@@ -483,6 +536,10 @@ function pressAction(){
 }
 function pointerX(e){const r=c.getBoundingClientRect();return(e.clientX-r.left)/r.width}
 function clampDial(){dial=Math.max(FMIN,Math.min(FMAX,dial))}
+function moveDial(delta){
+  dial+=Math.max(-DIAL_STEP_MAX,Math.min(DIAL_STEP_MAX,delta));
+  clampDial();
+}
 c.addEventListener('pointerdown',e=>{
   e.preventDefault();
   try{c.setPointerCapture(e.pointerId)}catch(err){}
@@ -507,7 +564,6 @@ function bindBtn(el,fn){
 }
 bindBtn(pbtn,togglePause);
 bindBtn(sbtn,toggleSound);
-$('closeb').addEventListener('click',e=>{e.stopPropagation();foundEl.classList.remove('on')});
 
 addEventListener('keydown',e=>{
   if(e.repeat)return;
@@ -515,6 +571,14 @@ addEventListener('keydown',e=>{
   if(e.target===sbtn||e.target===pbtn)return;
   const k=e.key;
   if(k==='m'||k==='M'){e.preventDefault();toggleSound();return}
+  /* while the note is open the DOM owns the keyboard: Tab, Enter and
+     Space must reach the focused control natively */
+  if(foundEl.classList.contains('on')){
+    if(k==='ArrowUp'||k==='ArrowLeft'){e.preventDefault();navMove(-1)}
+    else if(k==='ArrowDown'||k==='ArrowRight'){e.preventDefault();navMove(1)}
+    else if(k==='Escape'){e.preventDefault();closeNote()}
+    return;
+  }
   if(k==='p'||k==='P'||k==='Escape'){
     if(state===S_PLAY||state===S_RESUME||state===S_PAUSE){e.preventDefault();togglePause()}
     return;
@@ -527,40 +591,71 @@ addEventListener('keydown',e=>{
 });
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden)pauseGame();
-  else nudge();
+  else{nudge();recalibratePad()}
 });
 addEventListener('blur',pauseGame);
 
-let padPrev=false,padStartPrev=false;
-addEventListener('gamepadconnected',()=>{padConnected=true});
-addEventListener('gamepaddisconnected',()=>{padConnected=false});
+/* ---------------- GAMEPAD ----------------
+   Axis handling is calibrated, not assumed. See note 1 in the header. */
+let padPrev=false,padStartPrev=false,padSoundPrev=false,padBackPrev=false;
+let padNavPrev=0;
+addEventListener('gamepadconnected',()=>{padConnected=true;recalibratePad()});
+addEventListener('gamepaddisconnected',()=>{padConnected=false;padHintEl.classList.remove('on')});
+
+function padAxis(gp,i){
+  const a=gp.axes;
+  if(!a||typeof a[i]!=='number')return 0;
+  const raw=a[i];
+  if(padWarm>0){axRest[i]=raw;axArmed[i]=false;return 0}   /* calibrating */
+  if(axRest[i]===undefined){axRest[i]=raw;axArmed[i]=false;return 0}
+  if(Math.abs(axRest[i])>AX_REST_MAX)return 0;             /* trigger axis */
+  const v=raw-axRest[i];
+  if(!axArmed[i]){if(Math.abs(v)<0.05)axArmed[i]=true;return 0}
+  if(Math.abs(v)<=AX_DEAD)return 0;
+  const s=v<0?-1:1;
+  return s*Math.min(1,(Math.abs(v)-AX_DEAD)/(1-AX_DEAD));
+}
 function pollPad(dt){
   if(!navigator.getGamepads)return;
   let gp;try{gp=Array.from(navigator.getGamepads()).find(Boolean)}catch(err){return}
   if(!gp){padConnected=false;return}
-  padConnected=true;
+  if(!padConnected){padConnected=true;recalibratePad()}
+  if(padWarm>0)padWarm=Math.max(0,padWarm-dt);
+  if(navT>0)navT=Math.max(0,navT-dt);
+
   const btn=n=>!!(gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed);
-  if(padTriedStart){
-    if(state!==S_BOOT)padTriedStart=false;
-    else{padPromptT+=dt;if(padPromptT>PAD_PROMPT_SECS)padTriedStart=false}
+  const a=btn(0),b=btn(1),xb=btn(2);
+
+  /* X mutes from the pad, anywhere */
+  if(xb&&!padSoundPrev)toggleSound();
+  padSoundPrev=xb;
+
+  /* the note screen owns the pad while it is open */
+  if(foundEl.classList.contains('on')){
+    const vy=padAxis(gp,1);
+    const up=btn(12)||vy<-0.5,dn=btn(13)||vy>0.5;
+    if((up||dn)&&navT<=0){navMove(up?-1:1);navT=NAV_REPEAT}
+    if(!up&&!dn)navT=0;
+    if(a&&!padPrev)activateFocused(true);
+    if(b&&!padBackPrev)closeNote();
+    padPrev=a;padBackPrev=b;padStartPrev=btn(9);
+    return;
   }
+  padBackPrev=b;
+
   const ps=btn(9);
   if(ps&&!padStartPrev&&(state===S_PLAY||state===S_RESUME||state===S_PAUSE))togglePause();
   padStartPrev=ps;
-  if(state===S_PLAY){
-    const ax=(gp.axes&&gp.axes[0])||0;
-    if(Math.abs(ax)>0.14){const curve=(Math.abs(ax)-0.14)/0.86;dial+=(ax<0?-1:1)*curve*curve*2.4*dt;clampDial()}
-    const ax2=(gp.axes&&gp.axes[2])||0;
-    if(Math.abs(ax2)>0.14){dial+=(ax2<0?-1:1)*0.55*dt;clampDial()}
-    if(btn(14)){dial-=1.15*dt;clampDial()}
-    if(btn(15)){dial+=1.15*dt;clampDial()}
+
+  if(state===S_PLAY&&padWarm<=0){
+    const ax=padAxis(gp,0);
+    if(ax)moveDial(ax*ax*(ax<0?-1:1)*2.4*dt);
+    if(btn(14))moveDial(-1.15*dt);
+    if(btn(15))moveDial(1.15*dt);
   }
-  const pressed=btn(0)||btn(1)||btn(8);
-  if(pressed&&!padPrev){
-    /* a pad button is not a valid gesture for unlocking audio */
-    if(state===S_BOOT&&!audioLive){padTriedStart=true;padPromptT=0}
-    else pressAction();
-  }
+
+  const pressed=a||btn(8);
+  if(pressed&&!padPrev)pressAction();   /* A starts the round now */
   padPrev=pressed;
 }
 
@@ -640,14 +735,10 @@ function draw(){
     text(ROUND_TIME+' SECONDS.  '+TARGET_SCORE+' TO RECEIVE.',W/2,H*0.475,Math.max(10,W*0.027),BLUE);
     if(best>0)text('YOUR BEST  '+best,W/2,H*0.525,Math.max(10,W*0.028),AMBER);
     x.globalAlpha=pulse;
-    text('TAP OR CLICK TO POWER ON',W/2,H*0.60,Math.max(12,W*0.037),GREEN);
+    text(padConnected?'PRESS A OR TAP TO POWER ON':'TAP OR CLICK TO POWER ON',W/2,H*0.60,Math.max(12,W*0.037),GREEN);
     x.globalAlpha=1;
-    if(padTriedStart&&Math.floor(padPromptT*2.4)%2===0){
-      text('▼ CONTROLLER CANNOT START THE SOUND ▼',W/2,H*0.675,Math.max(9,W*0.024),AMBER);
-      text('TAP THE SCREEN, CLICK, OR PRESS SPACE',W/2,H*0.715,Math.max(9,W*0.024),PAPER);
-    }else{
-      text(padConnected?'CONTROLLER DETECTED':'DRAG, ARROWS OR STICK',W/2,H*0.695,Math.max(8,W*0.022),padConnected?GREEN:'#4a4640');
-    }
+    text(padConnected?'CONTROLLER DETECTED — STICK OR D-PAD TUNES':'DRAG, ARROWS OR STICK',W/2,H*0.678,Math.max(8,W*0.022),padConnected?GREEN:'#4a4640');
+    if(padConnected&&!audioLive)text('SOUND STILL NEEDS ONE TAP OR KEY',W/2,H*0.714,Math.max(8,W*0.022),AMBER);
     text('CARRIER: '+(audioLive?carrier:'ASLEEP'),W/2,H*0.76,Math.max(8,W*0.021),audioLive?GREEN:'#4a4640');
     text(SONG_TITLE,W/2,H*0.80,Math.max(8,W*0.021),'#4a4640');
     noiseOverlay(0.5);
@@ -717,7 +808,8 @@ function draw(){
   text('CARRIER '+carrier,bx+bw,by-H*0.024,Math.max(8,W*0.021),audioLive?'#5c5668':RED,'right');
 
   if(state===S_PLAY){
-    if(locked)text('LOCKED  x2  +'+Math.round(rate)+'/s'+(streak>0.4?'  '+streak.toFixed(1)+'s':''),W/2,H*0.60,Math.max(10,W*0.028),GREEN);
+    if(padWarm>0&&padConnected)text('CALIBRATING CONTROLLER',W/2,H*0.60,Math.max(9,W*0.025),BLUE);
+    else if(locked)text('LOCKED  x2  +'+Math.round(rate)+'/s'+(streak>0.4?'  '+streak.toFixed(1)+'s':''),W/2,H*0.60,Math.max(10,W*0.028),GREEN);
     else if(near)text('NEAR  +'+Math.round(rate)+'/s'+(streak>0.4?'  HOLDING '+streak.toFixed(1)+'s':''),W/2,H*0.60,Math.max(10,W*0.028),AMBER);
     else text(padConnected?'STICK OR DPAD TO TUNE':'DRAG TO TUNE',W/2,H*0.60,Math.max(9,W*0.025),'#4a4640');
   }
@@ -749,9 +841,9 @@ function draw(){
     text('TIME LEFT  '+timeLeft.toFixed(1)+'s',W/2,H*0.514,Math.max(11,W*0.030),PAPER);
     text('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.554,Math.max(9,W*0.024),'#8a8478');
     text('DIAL HIDDEN WHILE PAUSED',W/2,H*0.606,Math.max(9,W*0.024),DIM);
-    text('TAP TO RESUME',W/2,H*0.672,Math.max(13,W*0.038),GREEN);
+    text('TAP OR PRESS A TO RESUME',W/2,H*0.672,Math.max(13,W*0.038),GREEN);
     text('A '+RESUME_COUNT.toFixed(0)+' SECOND COUNT FOLLOWS',W/2,H*0.722,Math.max(8,W*0.022),'#5c5668');
-    text('P OR ESC  —  PAD START',W/2,H*0.77,Math.max(8,W*0.021),'#4a4640');
+    text('P OR ESC  —  PAD START  —  X MUTES',W/2,H*0.77,Math.max(8,W*0.021),'#4a4640');
   }
   if(state===S_WIN||state===S_LOSE){
     const win=state===S_WIN,fin=Math.floor(score);
@@ -769,7 +861,7 @@ function draw(){
       }
       text('GREEN '+Math.round(greenPts)+'   AMBER '+Math.round(amberPts),W/2,H*0.598,Math.max(8,W*0.022),DIM);
       text('BEST HOLD  '+bestStreak.toFixed(1)+'s',W/2,H*0.638,Math.max(8,W*0.022),'#5c5668');
-      if(!win)text(fin>=MERCY_SCORE?'PARTIAL LOCK — SOMETHING CAME THROUGH':'SOMEONE WAS THERE.',W/2,H*0.684,Math.max(10,W*0.026),'#8a8478');
+      text(win?'SOMEONE WAS THERE.':'HE STILL LET SOMETHING THROUGH.',W/2,H*0.684,Math.max(10,W*0.026),'#8a8478');
       if(endTimer>1.1)text(win?'TAP TO TUNE AGAIN':'TAP TO TRY AGAIN',W/2,H*0.73,Math.max(9,W*0.025),DIM);
     }
     if(!win)noiseOverlay(0.55);
